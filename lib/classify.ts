@@ -29,7 +29,8 @@ Recent original posts:
 ${postText || "No recent original posts were available."}`;
 
   const response = await client.responses.create({
-    model: process.env.OPENAI_MODEL ?? "gpt-5-mini",
+    // `||` rather than `??`: a blank OPENAI_MODEL must fall back, not send "".
+    model: process.env.OPENAI_MODEL?.trim() || "gpt-5-mini",
     input,
     text: {
       format: {

@@ -3,14 +3,23 @@ import "./globals.css";
 
 // Absolute URLs are required for social image tags. Vercel injects the
 // production domain; SITE_URL overrides it for a custom domain.
-const siteUrl =
-  process.env.SITE_URL ??
-  (process.env.VERCEL_PROJECT_PRODUCTION_URL
-    ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
-    : "http://localhost:3000");
+// Note the `||`: an unset variable arrives as an empty string, not undefined.
+function resolveSiteUrl() {
+  const explicit = process.env.SITE_URL?.trim();
+  const vercelHost = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim();
+  const candidate =
+    explicit || (vercelHost ? `https://${vercelHost}` : "") || "http://localhost:3000";
+
+  // A malformed value must not take down every page that renders metadata.
+  try {
+    return new URL(candidate);
+  } catch {
+    return new URL("http://localhost:3000");
+  }
+}
 
 export const metadata: Metadata = {
-  metadataBase: new URL(siteUrl),
+  metadataBase: resolveSiteUrl(),
   title: "Builder Radar",
   description: "A ranked directory of design engineers and creative developers shipping in public.",
   openGraph: {

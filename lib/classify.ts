@@ -7,13 +7,42 @@ export type CandidateAssessment = {
   reason: string;
 };
 
+/**
+ * The model is only asked for a hint, so a malformed answer must never abort a
+ * discovery pass. Anything unusable becomes null, and `score` is clamped to the
+ * 0-100 range that the discovery_candidates check constraint enforces.
+ */
+function parseAssessment(raw: string): CandidateAssessment | null {
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (typeof value !== "object" || value === null) return null;
+
+  const { score, qualifies, reason } = value as Record<string, unknown>;
+  if (typeof score !== "number" || !Number.isFinite(score)) return null;
+
+  return {
+    score: Math.min(100, Math.max(0, Math.round(score))),
+    qualifies: Boolean(qualifies),
+    reason: typeof reason === "string" && reason.trim() ? reason.trim() : "No explanation given."
+  };
+}
+
 export async function classifyCandidate(
   user: XUser,
   posts: XPost[]
 ): Promise<CandidateAssessment | null> {
-  if (!process.env.OPENAI_API_KEY) return null;
+  if (!process.env.OPENAI_API_KEY?.trim()) return null;
 
-  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  const client = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+    // Any OpenAI-compatible provider (DeepSeek, OpenRouter, a local server).
+    // Left unset, the SDK talks to OpenAI itself.
+    baseURL: process.env.OPENAI_BASE_URL?.trim() || undefined
+  });
   const postText = posts.map((post, index) => `${index + 1}. ${post.text}`).join("\n");
   const input = `Evaluate whether this X account belongs in Builder Radar.
 
@@ -51,5 +80,5 @@ ${postText || "No recent original posts were available."}`;
     }
   });
 
-  return JSON.parse(response.output_text) as CandidateAssessment;
+  return parseAssessment(response.output_text);
 }

@@ -55,8 +55,26 @@ Never put real secret values in GitHub. Copy `.env.example` to `.env.local` for 
 | `ADMIN_USERNAME` | Username for `/admin` |
 | `ADMIN_PASSWORD` | Password for `/admin` |
 | `OPENAI_API_KEY` | Optional AI candidate classification |
+| `OPENAI_BASE_URL` | Optional; point at any OpenAI-compatible provider |
 | `OPENAI_MODEL` | Classification model; defaults to `gpt-5-mini` |
 | `SITE_URL` | Optional canonical URL for social share images |
+
+### Using a non-OpenAI provider
+
+Classification goes through the OpenAI SDK, so any compatible provider works.
+For DeepSeek:
+
+```text
+OPENAI_API_KEY=<your DeepSeek key>
+OPENAI_BASE_URL=https://api.deepseek.com
+OPENAI_MODEL=deepseek-v4-flash
+```
+
+DeepSeek's Responses API accepts the strict `json_schema` format this code sends,
+so no code change is needed. Note that its *chat completions* endpoint rejects
+`json_schema`, so don't rewrite the call to use that endpoint. The model's reply
+is validated and the score clamped to 0-100 regardless of provider, because a bad
+value would otherwise violate the `discovery_candidates` check constraint.
 
 Generate `CRON_SECRET` and `ADMIN_PASSWORD` as long random strings. Do not reuse your normal passwords.
 

@@ -1,13 +1,6 @@
-import { classifyCandidate } from "@/lib/classify";
 import { getDb } from "@/lib/db";
 import { seedCreators } from "@/lib/seed-creators";
-import {
-  getAllFollowing,
-  getPostsByIds,
-  getUserPosts,
-  lookupUsersByUsernames,
-  type XUser
-} from "@/lib/x";
+import { getPostsByIds, getUserPosts, lookupUsersByUsernames } from "@/lib/x";
 
 // A post's likes keep climbing for roughly two days, so anything measured before
 // then is not yet comparable. Posts older than the window are left alone: their
@@ -15,6 +8,13 @@ import {
 const REFRESH_WINDOW_DAYS = 14;
 const MATURITY_HOURS = 48;
 const REFRESH_BATCH = 100;
+const SETTLED_RECHECK_DAYS = 7;
+
+// Profile reads bill at $0.010 each against $0.005 for a post, so with thirty
+// builders they were the largest line on the bill — and follower counts barely
+// move in six hours. Refreshing them daily instead of four times a day removes
+// about three quarters of that cost and changes no number anyone looks at.
+const PROFILE_REFRESH_HOURS = 20;
 
 /**
  * Brings stored like/repost/reply counts back up to date for a bounded window of
@@ -29,7 +29,7 @@ async function refreshRecentMetrics() {
       and (
         metrics_refreshed_at is null
         or metrics_refreshed_at < created_at + ${`${MATURITY_HOURS} hours`}::interval
-        or metrics_refreshed_at < now() - interval '3 days'
+        or metrics_refreshed_at < now() - ${`${SETTLED_RECHECK_DAYS} days`}::interval
       )
     order by created_at desc
     limit ${REFRESH_BATCH}
@@ -62,12 +62,55 @@ async function refreshRecentMetrics() {
   return { refreshed: fresh.length, missing: ids.length - fresh.length };
 }
 
-async function beginRun(kind: "posts" | "following") {
+async function beginRun(kind: "posts" | "following", cycleId: string | null = null) {
   const sql = getDb();
   const [run] = await sql<{ id: string }[]>`
-    insert into sync_runs (kind, status) values (${kind}, 'running') returning id
+    insert into sync_runs (kind, status, cycle_id)
+    values (${kind}, 'running', ${cycleId})
+    returning id
   `;
   return run.id;
+}
+
+/**
+ * The three phases of an update run minutes apart because each is bounded by the
+ * serverless function timeout. Grouping them under one cycle lets the site report
+ * a single "last updated" time rather than three that disagree.
+ */
+export async function openCycle() {
+  const sql = getDb();
+  const [cycle] = await sql<{ id: string }[]>`
+    insert into sync_cycles default values returning id
+  `;
+  return cycle.id;
+}
+
+export async function currentCycleId() {
+  const sql = getDb();
+  const [cycle] = await sql<{ id: string }[]>`
+    select id from sync_cycles
+    where started_at > now() - interval '3 hours'
+    order by started_at desc limit 1
+  `;
+  return cycle?.id ?? null;
+}
+
+export async function markCyclePhase(
+  cycleId: string | null,
+  phase: "posts_at" | "enriched_at" | "brief_at",
+  detail: Record<string, unknown> = {}
+) {
+  if (!cycleId) return;
+  const sql = getDb();
+  const payload = JSON.parse(JSON.stringify(detail)) as Parameters<typeof sql.json>[0];
+  const column = sql(phase);
+  await sql`
+    update sync_cycles
+    set ${column} = now(),
+        detail = detail || ${sql.json(payload)},
+        finished_at = case when ${phase} = 'brief_at' then now() else finished_at end
+    where id = ${cycleId}
+  `;
 }
 
 async function finishRun(
@@ -90,50 +133,76 @@ async function ensureSeedRows() {
     // do nothing on conflict: an existing row may have been paused or removed
     // deliberately from /admin, and that decision must survive every sync.
     await sql`
-      insert into creators (username, name, description, status)
-      values (${seed.username}, ${seed.label}, ${seed.summary}, 'approved')
-      on conflict (username) do nothing
+      insert into creators (username, name, description, status, bucket)
+      values (${seed.username}, ${seed.label}, ${seed.summary}, 'approved', ${seed.bucket})
+      on conflict (username) do update set
+        bucket = coalesce(creators.bucket, excluded.bucket)
     `;
   }
 }
 
-export async function syncCreatorsAndPosts() {
+/**
+ * Re-reads X profiles, but only for creators whose copy has gone stale. Post
+ * fetching needs `x_user_id`, which is already stored, so it does not depend on
+ * this having run.
+ */
+async function refreshStaleProfiles() {
   const sql = getDb();
-  const runId = await beginRun("posts");
+  const stale = await sql<{ username: string }[]>`
+    select username from creators
+    where status = 'approved'
+      and (
+        x_user_id is null
+        or last_synced_at is null
+        or last_synced_at < now() - ${`${PROFILE_REFRESH_HOURS} hours`}::interval
+      )
+  `;
+
+  if (!stale.length) return { looked_up: 0, updated: 0 };
+
+  const users = await lookupUsersByUsernames(stale.map((creator) => creator.username));
+  for (const user of users) {
+    await sql`
+      update creators set
+        x_user_id = ${user.id},
+        username = ${user.username},
+        name = ${user.name},
+        description = ${user.description ?? ""},
+        profile_image_url = ${user.profile_image_url ?? null},
+        followers_count = ${user.public_metrics?.followers_count ?? null},
+        verified = ${user.verified ?? false},
+        last_synced_at = now(),
+        updated_at = now()
+      where lower(username) = lower(${user.username})
+    `;
+  }
+
+  return { looked_up: stale.length, updated: users.length };
+}
+
+export async function syncCreatorsAndPosts(cycleId: string | null = null) {
+  const sql = getDb();
+  const runId = await beginRun("posts", cycleId);
   const errors: Array<{ username: string; error: string }> = [];
   let postsUpserted = 0;
 
   try {
     await ensureSeedRows();
-    const creatorRows = await sql<{ username: string }[]>`
-      select username from creators where status = 'approved'
+    const profiles = await refreshStaleProfiles();
+
+    const creators = await sql<Array<{ id: string; username: string; x_user_id: string }>>`
+      select id, username, x_user_id from creators
+      where status = 'approved' and x_user_id is not null
+      order by followers_count desc nulls last
     `;
-    const users = await lookupUsersByUsernames(creatorRows.map((creator) => creator.username));
 
-    for (const user of users) {
+    for (const creator of creators) {
       try {
-        const [creator] = await sql<{ id: string }[]>`
-          update creators set
-            x_user_id = ${user.id},
-            username = ${user.username},
-            name = ${user.name},
-            description = ${user.description ?? ""},
-            profile_image_url = ${user.profile_image_url ?? null},
-            followers_count = ${user.public_metrics?.followers_count ?? null},
-            verified = ${user.verified ?? false},
-            last_synced_at = now(),
-            updated_at = now()
-          where lower(username) = lower(${user.username})
-          returning id
-        `;
-
-        if (!creator) continue;
-
         const [latest] = await sql<{ id: string }[]>`
           select id from posts where creator_id = ${creator.id}
           order by created_at desc limit 1
         `;
-        const posts = await getUserPosts(user.id, latest?.id ?? null);
+        const posts = await getUserPosts(creator.x_user_id, latest?.id ?? null);
 
         for (const post of posts) {
           await sql`
@@ -142,7 +211,7 @@ export async function syncCreatorsAndPosts() {
               like_count, repost_count, reply_count, fetched_at, metrics_refreshed_at
             ) values (
               ${post.id}, ${creator.id}, ${post.text},
-              ${`https://x.com/${user.username}/status/${post.id}`}, ${post.created_at},
+              ${`https://x.com/${creator.username}/status/${post.id}`}, ${post.created_at},
               ${post.public_metrics?.like_count ?? 0},
               ${post.public_metrics?.retweet_count ?? 0},
               ${post.public_metrics?.reply_count ?? 0}, now(), now()
@@ -159,7 +228,7 @@ export async function syncCreatorsAndPosts() {
         }
       } catch (error) {
         errors.push({
-          username: user.username,
+          username: creator.username,
           error: error instanceof Error ? error.message : String(error)
         });
       }
@@ -167,116 +236,9 @@ export async function syncCreatorsAndPosts() {
 
     const metrics = await refreshRecentMetrics();
 
-    const detail = { creatorsFound: users.length, postsUpserted, metrics, errors };
-    await finishRun(runId, errors.length === users.length ? "failed" : "succeeded", detail);
-    return detail;
-  } catch (error) {
-    const detail = { error: error instanceof Error ? error.message : String(error), errors };
-    await finishRun(runId, "failed", detail);
-    throw error;
-  }
-}
-
-async function storeCandidate(user: XUser, discoveredBy: string) {
-  const sql = getDb();
-  const posts = await getUserPosts(user.id);
-  const assessment = await classifyCandidate(user, posts);
-
-  await sql`
-    insert into discovery_candidates (
-      x_user_id, username, name, description, profile_image_url,
-      followers_count, relevance_score, relevance_reason, discovered_by
-    ) values (
-      ${user.id}, ${user.username}, ${user.name}, ${user.description ?? ""},
-      ${user.profile_image_url ?? null}, ${user.public_metrics?.followers_count ?? 0},
-      ${assessment?.score ?? null},
-      ${assessment?.reason ?? "Awaiting AI classification."},
-      ${sql.array([discoveredBy])}
-    )
-    on conflict (x_user_id) do update set
-      username = excluded.username,
-      name = excluded.name,
-      description = excluded.description,
-      profile_image_url = excluded.profile_image_url,
-      followers_count = excluded.followers_count,
-      relevance_score = coalesce(excluded.relevance_score, discovery_candidates.relevance_score),
-      relevance_reason = coalesce(excluded.relevance_reason, discovery_candidates.relevance_reason),
-      discovered_by = (
-        select array_agg(distinct value)
-        from unnest(discovery_candidates.discovered_by || excluded.discovered_by) value
-      ),
-      updated_at = now()
-  `;
-}
-
-export async function checkNewFollowees() {
-  const sql = getDb();
-  const runId = await beginRun("following");
-  let discovered = 0;
-  let baselined = 0;
-  const errors: Array<{ username: string; error: string }> = [];
-
-  try {
-    const creators = await sql<
-      Array<{
-        id: string;
-        x_user_id: string;
-        username: string;
-        following_baselined_at: Date | null;
-      }>
-    >`
-      select id, x_user_id, username, following_baselined_at
-      from creators
-      where status = 'approved' and x_user_id is not null
-    `;
-
-    const approvedIds = new Set(creators.map((creator) => creator.x_user_id));
-
-    for (const creator of creators) {
-      try {
-        const following = await getAllFollowing(creator.x_user_id);
-        const knownRows = await sql<{ target_user_id: string }[]>`
-          select target_user_id from following_edges
-          where source_user_id = ${creator.x_user_id}
-        `;
-        const known = new Set(knownRows.map((row) => row.target_user_id));
-
-        if (creator.following_baselined_at) {
-          const newFollowees = following.filter(
-            (user) => !known.has(user.id) && !approvedIds.has(user.id)
-          );
-          for (const user of newFollowees) {
-            await storeCandidate(user, creator.username);
-            discovered += 1;
-          }
-        } else {
-          baselined += 1;
-        }
-
-        for (const user of following) {
-          await sql`
-            insert into following_edges (source_user_id, target_user_id)
-            values (${creator.x_user_id}, ${user.id})
-            on conflict (source_user_id, target_user_id)
-            do update set last_seen_at = now()
-          `;
-        }
-
-        await sql`
-          update creators
-          set following_baselined_at = coalesce(following_baselined_at, now())
-          where id = ${creator.id}
-        `;
-      } catch (error) {
-        errors.push({
-          username: creator.username,
-          error: error instanceof Error ? error.message : String(error)
-        });
-      }
-    }
-
-    const detail = { creatorsChecked: creators.length, discovered, baselined, errors };
+    const detail = { creators: creators.length, profiles, postsUpserted, metrics, errors };
     await finishRun(runId, errors.length === creators.length ? "failed" : "succeeded", detail);
+    await markCyclePhase(cycleId, "posts_at", { posts: detail });
     return detail;
   } catch (error) {
     const detail = { error: error instanceof Error ? error.message : String(error), errors };

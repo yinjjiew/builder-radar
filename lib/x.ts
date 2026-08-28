@@ -138,19 +138,33 @@ export async function getPostsByIds(ids: string[]) {
   return posts;
 }
 
-export async function getAllFollowing(userId: string) {
+/**
+ * Follow-graph reads bill per account returned, not per request, at $0.010 each
+ * — an order of magnitude more than a post read. Reading one popular builder's
+ * full following list therefore costs around $10, and doing it for the whole
+ * roster costs a few hundred dollars. Every caller must pass an explicit ceiling
+ * so the spend of a call is knowable before it runs.
+ *
+ * X returns the most recently followed accounts first, which is the useful end
+ * of the list anyway: it reflects who someone is paying attention to now.
+ */
+export async function getFollowing(userId: string, limit: number) {
+  const capped = Math.max(1, Math.min(limit, 1_000));
   const users: XUser[] = [];
   let paginationToken: string | undefined;
 
   do {
+    const remaining = capped - users.length;
+    if (remaining <= 0) break;
     const response = await xFetch<XUser[]>(`/users/${userId}/following`, {
-      max_results: "1000",
+      // The endpoint rejects max_results below 1 or above 1000.
+      max_results: String(Math.max(1, Math.min(remaining, 1_000))),
       pagination_token: paginationToken ?? "",
       "user.fields": "description,profile_image_url,public_metrics,verified,url"
     });
     users.push(...(response.data ?? []));
     paginationToken = response.meta?.next_token;
-  } while (paginationToken);
+  } while (paginationToken && users.length < capped);
 
-  return users;
+  return users.slice(0, capped);
 }

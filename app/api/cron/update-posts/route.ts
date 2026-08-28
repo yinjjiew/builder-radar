@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isAuthorizedCron } from "@/lib/cron-auth";
-import { syncCreatorsAndPosts } from "@/lib/sync";
+import { openCycle, syncCreatorsAndPosts } from "@/lib/sync";
 
 export const maxDuration = 300;
 
@@ -10,7 +10,9 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    return NextResponse.json({ ok: true, ...(await syncCreatorsAndPosts()) });
+    // First phase of the cycle, so it opens one for the later phases to join.
+    const cycleId = await openCycle();
+    return NextResponse.json({ ok: true, cycleId, ...(await syncCreatorsAndPosts(cycleId)) });
   } catch (error) {
     return NextResponse.json(
       { ok: false, error: error instanceof Error ? error.message : String(error) },

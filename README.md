@@ -217,6 +217,19 @@ and can be retried without redoing the others. `enrich` only calls the model for
 builders who posted something new, so a steady-state run takes about 30 seconds
 even though the first pass over an empty database takes several minutes.
 
+### If you grow the directory
+
+A model call measured about 30 seconds locally and about 78 seconds on Vercel,
+where cold start and network add to it. `enrich` runs `CONCURRENCY` of them at a
+time (currently 5) and stops accepting new work after `CREATOR_BUDGET_MS`,
+leaving the rest for the next cycle — a builder whose `focus_latest_post_id`
+still trails their newest post is simply picked up again.
+
+So growth degrades gracefully rather than failing: past roughly 15 builders
+posting in the same window, a cold pass will take two cycles instead of one. If
+that becomes annoying, raise `CONCURRENCY` in `lib/enrich.ts` before touching
+anything else.
+
 **This schedule requires a Vercel Pro plan.** Hobby accounts are limited to one cron
 run per day, and any more frequent expression fails at deploy time with
 `Hobby accounts are limited to daily cron jobs`. On Hobby, either move all three to

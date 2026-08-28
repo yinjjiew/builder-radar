@@ -334,11 +334,11 @@ request** — this single fact drives every design decision below.
 | User read | $0.010 |
 | Following/followers read | $0.010 |
 
-### The six-hour cycle: roughly $30-40/month
+### The six-hour cycle: roughly $25/month
 
 Each run reads any genuinely new posts (`getUserPosts` passes `since_id`) and
-re-reads metrics for recent posts that have not yet matured, capped at 100 posts
-per run and batched 100 ids per request.
+re-reads metrics for posts that have just passed the settling age, capped at 100
+posts per run and batched 100 ids per request.
 
 **Profile reads are refreshed daily, not every six hours.** At $0.010 each,
 thirty profiles four times a day is $36/month on its own — and follower counts do
@@ -346,12 +346,20 @@ not meaningfully move in six hours. `PROFILE_REFRESH_HOURS` in `lib/sync.ts` dro
 about three quarters of that cost and changes no number anyone looks at. Post
 fetching is unaffected because it uses the stored `x_user_id`.
 
-**The metrics refresh is worth its cost.** `since_id` means a post is read once and
-never revisited, which froze every like count at whatever it was minutes after
-publishing — one measured at 45 minutes sat next to one measured at 37 hours,
-making engagement comparison meaningless. `metrics_refreshed_at` records when
-counts were actually read, and only posts read at least 24 hours after publishing
-enter a ranking.
+**The metrics refresh is worth its cost, but only if timed.** `since_id` means a
+post is read once and never revisited, which froze every like count at whatever it
+was minutes after publishing — one measured at 45 minutes sat next to one measured
+at 37 hours, making engagement comparison meaningless. `metrics_refreshed_at`
+records when counts were actually read, and only posts read at least 24 hours
+after publishing enter a ranking.
+
+The naive fix — re-read anything not yet two days old, every cycle — costs eight
+paid reads per post to arrive at the same answer as one well-timed read. Measured
+on this corpus it made 71 posts eligible on every single run. `SETTLE_HOURS` in
+`lib/sync.ts` instead reads each post once, shortly after it crosses the maturity
+bar, plus a weekly sweep for longer-term drift. That is cheaper *and* produces a
+better number: posts previously landed anywhere between 24 and 48 hours of age,
+where now they sit in a narrow band and are genuinely comparable.
 
 ### The follow graph: $14.12 for the current one, and why it is manual
 

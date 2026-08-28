@@ -6,9 +6,20 @@ import { getPostsByIds, getUserPosts, lookupUsersByUsernames } from "@/lib/x";
 // then is not yet comparable. Posts older than the window are left alone: their
 // counts have settled and re-reading them would only cost X API quota.
 const REFRESH_WINDOW_DAYS = 14;
-const MATURITY_HOURS = 48;
 const REFRESH_BATCH = 100;
 const SETTLED_RECHECK_DAYS = 7;
+
+/**
+ * The age at which a post's counts are read for the record.
+ *
+ * Comfortably past the 24-hour bar the statistics use for maturity, and read
+ * once rather than on every cycle until the post is two days old. Re-reading a
+ * fresh post four times a day cost eight paid reads to arrive at the same answer
+ * as one well-timed read, and produced a *worse* number: posts ended up measured
+ * anywhere between 24 and 48 hours of age, while a single read at this age puts
+ * every post in a narrow band. Cheaper and more comparable at the same time.
+ */
+const SETTLE_HOURS = 26;
 
 // Profile reads bill at $0.010 each against $0.005 for a post, so with thirty
 // builders they were the largest line on the bill — and follower counts barely
@@ -18,17 +29,22 @@ const PROFILE_REFRESH_HOURS = 20;
 
 /**
  * Brings stored like/repost/reply counts back up to date for a bounded window of
- * recent posts. Prioritises posts whose metrics were captured before they had
- * time to mature, then anything not re-read in the last three days.
+ * recent posts: those that have just passed the settling age and are still
+ * carrying the count they were given minutes after publishing, plus a weekly
+ * sweep of everything else in the window to catch longer-term drift.
  */
 async function refreshRecentMetrics() {
   const sql = getDb();
+  const settle = `${SETTLE_HOURS} hours`;
   const rows = await sql<{ id: string }[]>`
     select id from posts
     where created_at > now() - ${`${REFRESH_WINDOW_DAYS} days`}::interval
       and (
         metrics_refreshed_at is null
-        or metrics_refreshed_at < created_at + ${`${MATURITY_HOURS} hours`}::interval
+        or (
+          created_at < now() - ${settle}::interval
+          and metrics_refreshed_at < created_at + ${settle}::interval
+        )
         or metrics_refreshed_at < now() - ${`${SETTLED_RECHECK_DAYS} days`}::interval
       )
     order by created_at desc

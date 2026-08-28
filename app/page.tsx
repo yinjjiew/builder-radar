@@ -20,16 +20,21 @@ export default async function HomePage() {
             <span className="radar-mark" aria-hidden="true"><i /></span>
             Builder Radar
           </Link>
-          <Link href="/insights" className="nav-link">Demand signals</Link>
+          <div className="nav-links">
+            <Link href="/posts" className="nav-link">Post rank</Link>
+            <Link href="/categories" className="nav-link">Categories</Link>
+            <Link href="/network" className="nav-link">Network</Link>
+            <Link href="/insights" className="nav-link">Insights</Link>
+          </div>
         </nav>
 
         <div className="hero-copy">
           <p className="eyebrow">Signals from people who ship</p>
           <h1>See what the internet’s most inventive builders are making.</h1>
           <p className="hero-description">
-            A focused feed of design engineers and creative developers—ranked by audience,
-            updated from their latest original posts. Every six hours an AI reads what each
-            one shipped and{" "}
+            A focused feed of design engineers, creative developers, AI tool builders and
+            solo shippers—ranked by audience, updated from their latest original posts.
+            Every six hours an AI reads what each one shipped and{" "}
             <Link href="/insights" className="hero-inline-link">
               measures which of it the audience actually rewards
             </Link>

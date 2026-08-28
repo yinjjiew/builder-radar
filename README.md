@@ -1,6 +1,8 @@
 # Builder Radar
 
-A public, ranked directory of design engineers and creative developers who publish what they build.
+A public, ranked directory of thirty people who build in public — design engineers,
+creative developers, AI and no-code tool builders, and solo shippers — with a
+demand analysis built on what their audiences actually reward.
 
 The project is ready for GitHub and Vercel. It uses:
 
@@ -10,17 +12,40 @@ The project is ready for GitHub and Vercel. It uses:
 - An OpenAI-compatible model for summaries and demand analysis
 - Vercel Cron for automatic updates
 
+## Pages
+
+| Path | What it answers |
+|---|---|
+| `/` | Who is in the directory, ranked by followers |
+| `/posts` | The 30 strongest posts, by raw likes or by likes per 1,000 followers |
+| `/categories` | Which kinds of product earn attention, with the best examples |
+| `/network` | Who the directory follows, and who to add next |
+| `/insights` | The demand brief and the statistics behind it, with 8 saved versions |
+
 ## Product behavior
 
-- Ten approved creators are seeded automatically.
+- Thirty approved creators are seeded automatically, in four curated cohorts
+  (`no-code`, `indie`, `craft`, `3d`) recorded on `creators.bucket`.
 - Creators are ranked by current X follower count.
-- Five recent original posts are shown for each creator.
-- Replies and reposts are excluded.
-- Posts and follower counts update every six hours.
+- Five recent original posts are shown for each creator; replies and reposts are excluded.
+- Posts and like counts update every six hours. Follower counts refresh daily —
+  see [X API cost](#x-api-cost) for why that split exists.
 - Builders are curated by hand at `/admin`: add by username, pause, or remove.
 - Paused and removed builders stay that way; seeding never resurrects them.
-- Automatic follow-graph discovery exists but is **not scheduled**, because it is
-  expensive. See [X API cost](#x-api-cost).
+- The follow graph is a **manual, budgeted pass**, not a cron job, because it is
+  the one genuinely expensive call here.
+
+### Why this roster
+
+The first ten builders were craft and 3D specialists, and every brief written
+against them reported the same limitation: almost no posts aimed at non-technical
+people. That directory can say what other engineers admire but very little about
+what an ordinary person would want to build. The roster now adds people shipping
+prompt-to-app products and solo builders working closer to product and marketing
+than to engineering.
+
+Every handle in `lib/seed-creators.ts` was verified against the X API before being
+added. Four plausible-looking handles turned out not to exist.
 
 ## Demand analysis at `/insights`
 
@@ -30,9 +55,20 @@ the goal in `lib/mission.ts`. The results appear as a summary on each directory
 card and in full on `/insights`.
 
 Each post is also tagged against a closed vocabulary — theme, artifact type,
-intent, target audience, and a 0-100 score for how strongly it suggests
-non-engineers would want to build that thing. Because the vocabulary is fixed,
-those tags aggregate into statistics rather than fragmenting into synonyms.
+product category, intent, target audience, and a 0-100 score for how strongly it
+suggests non-engineers would want to build that thing. Because the vocabulary is
+fixed, those tags aggregate into statistics rather than fragmenting into synonyms.
+
+**One annotator, one standard.** `PROMPT_VERSION` in `lib/insights.ts` records
+which version of the tagging prompt produced each row. Bump it and the whole
+corpus is re-tagged on the next passes. This matters more than it sounds: a
+leaderboard built from posts tagged by two different prompts is partly ranking the
+prompt rather than the posts, so mixing annotators to get slightly better
+individual tags would make the aggregate numbers worse.
+
+`PRODUCT_CATEGORY_RULES` in `lib/mission.ts` gives each category a written
+boundary rather than a synonym, because vague category names are the main cause of
+tags drifting between runs.
 
 **Editing the goal.** `MISSION` in `lib/mission.ts` is the single place that aims
 the whole pipeline. Change it and the next enrichment run re-scores everything
@@ -208,9 +244,19 @@ staggered so each finishes before the next needs its output:
 
 ```text
 :00  /api/cron/update-posts   collect new posts, refresh recent like counts
-:10  /api/cron/enrich         summarise builders, tag their new posts
-:35  /api/cron/brief          recompute statistics, write the demand brief
+:05  /api/cron/enrich         summarise builders, tag their new posts
+:12  /api/cron/brief          recompute statistics, write the demand brief
 ```
+
+All three phases belong to one **cycle**, recorded in `sync_cycles`, so the site
+reports a single "last full cycle" time rather than three that disagree. They
+cannot literally run at the same instant: each phase needs the previous one's
+output, and each is bounded by the 300-second function limit. Fourteen minutes
+apart is as close together as they can safely be.
+
+The rankings on `/posts` and `/categories` are not affected by any of this — they
+are computed from the database on every page load, so they are never stale
+relative to the collected data.
 
 They are separate routes rather than one, so each gets its own 300-second budget
 and can be retried without redoing the others. `enrich` only calls the model for
@@ -236,7 +282,7 @@ run per day, and any more frequent expression fails at deploy time with
 daily times such as `0 5 * * *`, `10 5 * * *`, `35 5 * * *`, or point an external
 scheduler at the routes.
 
-After deployment, the first post cron populates the ten seeded profiles and their posts.
+After deployment, the first post cron populates the thirty seeded profiles and their posts.
 
 ## Trigger the pipeline manually
 
@@ -271,14 +317,16 @@ The browser asks for `ADMIN_USERNAME` and `ADMIN_PASSWORD`. The page offers:
 - **Pause** — hides a builder from the public directory and stops syncing their posts,
   without discarding the posts already stored.
 - **Remove** — hides them permanently. Seeded builders will not come back.
-- **Discovered candidates** — the review queue, populated only when you run a
-  discovery pass by hand.
+- **Discovered candidates** — the review queue, populated by a follow-graph pass.
+  The same people appear on `/network`, ranked by how many of the directory follow
+  them.
 
 ## X API cost
 
 X moved to pay-per-use in February 2026 and discontinued the free tier. The legacy
 $200/month Basic plan was retired and its subscribers were migrated to pay-per-use;
-new developers cannot buy a flat tier. Billing is per resource returned:
+new developers cannot buy a flat tier. **Reads bill per resource returned, not per
+request** — this single fact drives every design decision below.
 
 | Resource | Unit cost |
 |---|---|
@@ -286,43 +334,62 @@ new developers cannot buy a flat tier. Billing is per resource returned:
 | User read | $0.010 |
 | Following/followers read | $0.010 |
 
-**The post sync is cheap.** Each run reads 10 user profiles plus any genuinely new
-posts, since `getUserPosts` passes `since_id`. At the six-hour cadence that is roughly
-**$20–25/month**.
+### The six-hour cycle: roughly $30-40/month
 
-**The metrics refresh adds a little, and is worth it.** `since_id` means a post is
-read once and never revisited, which froze every like count at whatever it was
-minutes after publishing — one measured at 45 minutes sat next to one measured at
-37 hours, making engagement comparison meaningless. Each run now also re-reads
-metrics for posts from the last 14 days that have not yet matured, capped at 100
-posts per run and batched 100 ids per request. That is at most 100 post reads, or
-**$0.50 per run**, and it is what makes `/insights` trustworthy.
+Each run reads any genuinely new posts (`getUserPosts` passes `since_id`) and
+re-reads metrics for recent posts that have not yet matured, capped at 100 posts
+per run and batched 100 ids per request.
 
-**Follow-graph discovery is not.** `getAllFollowing` must re-download each creator's
-complete following list on every pass, because the X API offers no "recently followed"
-endpoint. Ten creators following about a thousand accounts each is 10,000 billable
-resources, or about **$100 per pass**. Run daily, that is **~$3,000/month**.
+**Profile reads are refreshed daily, not every six hours.** At $0.010 each,
+thirty profiles four times a day is $36/month on its own — and follower counts do
+not meaningfully move in six hours. `PROFILE_REFRESH_HOURS` in `lib/sync.ts` drops
+about three quarters of that cost and changes no number anyone looks at. Post
+fetching is unaffected because it uses the stored `x_user_id`.
 
-This is why `/api/cron/check-following` is deliberately absent from `vercel.json`.
-The endpoint still works and is still protected by `CRON_SECRET`, so you can run a
-deliberate pass and pay for it knowingly:
+**The metrics refresh is worth its cost.** `since_id` means a post is read once and
+never revisited, which froze every like count at whatever it was minutes after
+publishing — one measured at 45 minutes sat next to one measured at 37 hours,
+making engagement comparison meaningless. `metrics_refreshed_at` records when
+counts were actually read, and only posts read at least 24 hours after publishing
+enter a ranking.
+
+### The follow graph: $14.12 for the current one, and why it is manual
+
+A following list bills $0.010 per account returned. Reading all thirty builders'
+complete lists — roughly a thousand accounts each — would be about **$300**, and on
+the six-hour cycle it would exceed **$1,000/month**. That is more than everything
+else here combined.
+
+So `getFollowing` requires an explicit ceiling from its caller, and the cost of a
+pass is exactly `scouts x perScout x $0.010`, knowable before the first request:
 
 ```bash
+# Ask what it would cost, spending nothing
 curl -H "Authorization: Bearer YOUR_CRON_SECRET" \
-  https://YOUR-VERCEL-DOMAIN/api/cron/check-following
+  "https://YOUR-VERCEL-DOMAIN/api/network/build?scouts=30&perScout=50&dry=1"
+
+# Then actually run it
+curl -H "Authorization: Bearer YOUR_CRON_SECRET" \
+  "https://YOUR-VERCEL-DOMAIN/api/network/build?scouts=30&perScout=50"
 ```
 
-Before doing that, consider narrowing the creator set to two or three "scouts", since
-cost scales linearly with the number of approved creators. Note also that the route
-sets `maxDuration = 300`, and a full pass over many creators plus one OpenAI call per
-candidate can exceed that and be killed mid-run.
+The current graph cost **$14.12**: 30 builders x 50 most-recently-followed accounts,
+1,412 records read, 978 unique accounts, 46 kept. X returns following lists newest
+first, which is the useful end anyway — it reflects who someone is paying attention
+to now. Every pass is recorded in the `network_runs` table with its measured cost.
+
+Candidates are filtered by a cheap keyword prefilter, then screened in batches by
+the model, then ranked by how many of the directory follow them. That last signal
+is the strongest one available, because it is a judgement made by people already
+doing the work rather than an inference from a bio.
 
 ## Model cost
 
 Far smaller than the X API. One call per builder who posted something new, plus
-one call for the brief, four times a day. On `deepseek-v4-flash` that measured
-around 2,000 output tokens per builder call, which is roughly **$1–2/month** at
-this directory size. Builders with nothing new are skipped entirely, so the cost
+one call for the brief, four times a day, plus a handful of batched screening
+calls whenever the follow graph is rebuilt. On `deepseek-v4-flash` that measured
+around 2,000 output tokens per builder call, which is roughly **$2–4/month** at
+thirty builders. Builders with nothing new are skipped entirely, so the cost
 scales with how much the people you follow actually post.
 
 ## Verification completed
@@ -336,7 +403,12 @@ scales with how much the people you follow actually post.
 - Admin basic auth uses constant-time comparison and UTF-8 safe decoding
 - Metrics refresh confirmed against live X data: stored counts moved 9→25 and
   719→752 likes, 21 posts updated in a single batched request
-- Enrichment confirmed against live DeepSeek: 10 builders summarised, 82 posts
-  tagged, brief written, all model output schema-validated
+- Enrichment confirmed against live DeepSeek: 30 builders summarised, 283 posts
+  tagged at a single prompt version, brief written, all model output schema-validated
+- Follow-graph pass confirmed against live X: 1,412 records read for a measured
+  $14.12, matching the pre-declared ceiling exactly
+- Every seeded handle verified against the X API; four non-existent handles caught
+- Graph layout renders with no node overlaps and no colliding labels at 76 nodes
+- Out-of-range and non-numeric `?v=` and `?by=` values fall back rather than erroring
 - 20 concurrent `/insights` loads all returned 200, so the CTE-heavy statistics
   queries hold up on one pooled connection

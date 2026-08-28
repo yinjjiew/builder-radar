@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { DimensionTable } from "@/components/dimension-table";
 import { SignalPostList } from "@/components/signal-post-list";
+import { SiteNav } from "@/components/site-nav";
+import { KEEP_REPORTS } from "@/lib/enrich";
 import { hasDatabase } from "@/lib/db";
 import { compactNumber } from "@/lib/format";
 import { artifactLabel, audienceLabel, intentLabel, MISSION, themeLabel } from "@/lib/mission";
@@ -8,11 +10,12 @@ import {
   getBreakoutPosts,
   getCorpusHealth,
   getCreatorFocus,
+  getCycleStatus,
   getNocodeSplit,
+  getReportHistory,
   getTagStats,
   getThemeStats,
-  getTopEngagementPosts,
-  getLatestReport
+  getTopEngagementPosts
 } from "@/lib/stats";
 
 export const dynamic = "force-dynamic";
@@ -29,7 +32,7 @@ const BAND_COPY: Record<string, string> = {
   low: "Aimed at engineers only"
 };
 
-function stamp(value: string | null) {
+function stamp(value: string | null | undefined) {
   if (!value) return "not yet";
   return new Date(value).toLocaleString("en", {
     month: "short",
@@ -39,10 +42,15 @@ function stamp(value: string | null) {
   });
 }
 
-export default async function InsightsPage() {
+export default async function InsightsPage({
+  searchParams
+}: {
+  searchParams: Promise<{ v?: string }>;
+}) {
   if (!hasDatabase()) {
     return (
       <main className="insights-shell">
+        <SiteNav current="/insights" />
         <p className="empty-note">
           Connect PostgreSQL and run an enrichment pass to see demand signals.
         </p>
@@ -50,19 +58,38 @@ export default async function InsightsPage() {
     );
   }
 
-  const [health, report, themes, artifacts, intents, audiences, nocode, breakouts, top, creators] =
-    await Promise.all([
-      getCorpusHealth(),
-      getLatestReport(),
-      getThemeStats(),
-      getTagStats("artifact"),
-      getTagStats("intent"),
-      getTagStats("audience"),
-      getNocodeSplit(),
-      getBreakoutPosts(10),
-      getTopEngagementPosts(6),
-      getCreatorFocus()
-    ]);
+  const params = await searchParams;
+
+  const [
+    health,
+    history,
+    cycle,
+    themes,
+    artifacts,
+    intents,
+    audiences,
+    nocode,
+    breakouts,
+    top,
+    creators
+  ] = await Promise.all([
+    getCorpusHealth(),
+    getReportHistory(KEEP_REPORTS),
+    getCycleStatus(),
+    getThemeStats(),
+    getTagStats("artifact"),
+    getTagStats("intent"),
+    getTagStats("audience"),
+    getNocodeSplit(),
+    getBreakoutPosts(10),
+    getTopEngagementPosts(6),
+    getCreatorFocus()
+  ]);
+
+  const requested = Number.parseInt(params.v ?? "0", 10);
+  const versionIndex =
+    Number.isInteger(requested) && requested >= 0 && requested < history.length ? requested : 0;
+  const report = history[versionIndex] ?? null;
 
   const high = nocode.find((band) => band.band === "high");
   const low = nocode.find((band) => band.band === "low");
@@ -71,17 +98,7 @@ export default async function InsightsPage() {
 
   return (
     <main className="insights-shell">
-      <nav className="insights-nav" aria-label="Primary navigation">
-        <Link href="/" className="wordmark insights-wordmark">
-          <span className="radar-mark" aria-hidden="true">
-            <i />
-          </span>
-          Builder Radar
-        </Link>
-        <Link href="/" className="nav-link-dark">
-          Back to directory
-        </Link>
-      </nav>
+      <SiteNav current="/insights" />
 
       <header className="insights-header">
         <p className="eyebrow">Demand signals</p>
@@ -107,15 +124,51 @@ export default async function InsightsPage() {
             <span>AI-tagged</span>
           </div>
           <div>
-            <strong>{stamp(health.lastEnrichedAt)}</strong>
-            <span>last analysis</span>
+            <strong>{stamp(cycle?.briefAt ?? health.lastEnrichedAt)}</strong>
+            <span>last full cycle</span>
           </div>
         </div>
       </header>
 
+      {history.length > 1 ? (
+        <section className="version-bar" aria-label="Saved versions of this brief">
+          <p className="version-label">
+            Saved readings <span>({history.length} of {KEEP_REPORTS} kept)</span>
+          </p>
+          <div className="version-links">
+            {history.map((entry, index) => (
+              <Link
+                key={entry.createdAt || index}
+                href={index === 0 ? "/insights" : `/insights?v=${index}`}
+                className={index === versionIndex ? "version-chip active" : "version-chip"}
+                aria-current={index === versionIndex ? "true" : undefined}
+              >
+                {index === 0 ? "Latest" : stamp(entry.createdAt)}
+              </Link>
+            ))}
+          </div>
+          <p className="footnote">
+            Each reading was written against a different snapshot of the corpus. Comparing them
+            shows which conclusions survived the sample growing and which were artefacts of a thin
+            one.
+          </p>
+        </section>
+      ) : null}
+
       {report ? (
         <section className="brief">
-          <p className="eyebrow acid">The read · {stamp(report.createdAt)}</p>
+          <p className="eyebrow acid">
+            {versionIndex === 0 ? "The read" : `Earlier read (${versionIndex + 1} of ${history.length})`} ·{" "}
+            {stamp(report.createdAt)}
+          </p>
+          {versionIndex === 0 ? null : (
+            <p className="version-notice">
+              You are reading an archived version, written when the corpus held{" "}
+              {String(report.sample.taggedPosts ?? "?")} tagged posts from{" "}
+              {String(report.sample.creators ?? "?")} builders. The tables below always show current
+              data. <Link href="/insights">Back to the latest.</Link>
+            </p>
+          )}
           <h2>{report.headline}</h2>
           <p className="brief-body">{report.demandRead}</p>
 
@@ -245,6 +298,17 @@ export default async function InsightsPage() {
         rows={artifacts}
         label={artifactLabel}
       />
+
+      <section className="panel cross-link">
+        <h3>Product categories</h3>
+        <p className="panel-question">
+          The same corpus grouped by what kind of product was made — games, utility tools, UI kits,
+          agents — with average and median engagement, and the best example of each.
+        </p>
+        <Link href="/categories" className="rank-link">
+          Open the category ranking
+        </Link>
+      </section>
 
       <DimensionTable
         title="How it was presented"
@@ -385,10 +449,17 @@ export default async function InsightsPage() {
           {health.newestPost ? new Date(health.newestPost).toLocaleDateString("en") : "–"}.
         </p>
         <p className="footnote">
-          Statistics recompute on every page load. Summaries and the brief refresh every six hours,
-          after new posts are collected. The sample is design engineers and creative developers, so
-          it reveals what a technical audience rewards; treat it as a signal about craft and appetite,
-          not as a survey of non-technical users.
+          Statistics recompute on every page load, so the tables are never stale relative to the
+          collected data. One update cycle runs every six hours in three phases — posts collected{" "}
+          {stamp(cycle?.postsAt)}, summaries {stamp(cycle?.enrichedAt)}, this brief{" "}
+          {stamp(cycle?.briefAt)}. They are minutes apart rather than simultaneous because each
+          phase has its own function time limit.
+        </p>
+        <p className="footnote">
+          The sample is people who build in public: design engineers, creative developers, AI tool
+          builders and solo shippers. It reveals what a builder audience rewards. It is not a survey
+          of non-technical users, and no amount of analysis here can substitute for watching an
+          actual beginner try to make something.
         </p>
       </footer>
     </main>

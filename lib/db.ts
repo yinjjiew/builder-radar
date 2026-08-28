@@ -1,0 +1,154 @@
+import postgres, { type Sql } from "postgres";
+import { seedCreators } from "@/lib/seed-creators";
+import type { Builder, DiscoveryCandidate } from "@/lib/types";
+
+let client: Sql | null = null;
+
+export function hasDatabase() {
+  return Boolean(process.env.DATABASE_URL);
+}
+
+export function getDb() {
+  if (!process.env.DATABASE_URL) {
+    throw new Error("DATABASE_URL is not configured");
+  }
+
+  if (!client) {
+    client = postgres(process.env.DATABASE_URL, {
+      max: 1,
+      prepare: false,
+      idle_timeout: 20,
+      connect_timeout: 15
+    });
+  }
+
+  return client;
+}
+
+export async function getBuilders(): Promise<Builder[]> {
+  if (!hasDatabase()) {
+    return seedCreators.map((creator, index) => ({
+      id: `seed-${index}`,
+      username: creator.username,
+      name: creator.label,
+      description: creator.summary,
+      profileImageUrl: null,
+      followersCount: null,
+      verified: false,
+      lastSyncedAt: null,
+      posts: []
+    }));
+  }
+
+  const sql = getDb();
+  const rows = await sql<
+    Array<{
+      id: string;
+      username: string;
+      name: string;
+      description: string;
+      profile_image_url: string | null;
+      followers_count: number | null;
+      verified: boolean;
+      last_synced_at: Date | null;
+      posts: Array<{
+        id: string;
+        text: string;
+        created_at: string;
+        url: string;
+        like_count: number;
+        repost_count: number;
+        reply_count: number;
+      }>;
+    }>
+  >`
+    select
+      c.id,
+      c.username,
+      c.name,
+      c.description,
+      c.profile_image_url,
+      c.followers_count,
+      c.verified,
+      c.last_synced_at,
+      coalesce(
+        (
+          select json_agg(recent_posts order by recent_posts.created_at desc)
+          from (
+            select p.id, p.text, p.created_at, p.url,
+                   p.like_count, p.repost_count, p.reply_count
+            from posts p
+            where p.creator_id = c.id
+            order by p.created_at desc
+            limit 5
+          ) recent_posts
+        ),
+        '[]'::json
+      ) as posts
+    from creators c
+    where c.status = 'approved'
+    order by c.followers_count desc nulls last, lower(c.username) asc
+  `;
+
+  return rows.map((row) => ({
+    id: row.id,
+    username: row.username,
+    name: row.name,
+    description: row.description,
+    profileImageUrl: row.profile_image_url,
+    followersCount: row.followers_count,
+    verified: row.verified,
+    lastSyncedAt: row.last_synced_at?.toISOString() ?? null,
+    posts: row.posts.map((post) => ({
+      id: post.id,
+      text: post.text,
+      createdAt: new Date(post.created_at).toISOString(),
+      url: post.url,
+      likeCount: post.like_count,
+      repostCount: post.repost_count,
+      replyCount: post.reply_count
+    }))
+  }));
+}
+
+export async function getDiscoveryCandidates(): Promise<DiscoveryCandidate[]> {
+  if (!hasDatabase()) return [];
+  const sql = getDb();
+  const rows = await sql<
+    Array<{
+      id: string;
+      x_user_id: string;
+      username: string;
+      name: string;
+      description: string;
+      profile_image_url: string | null;
+      followers_count: number;
+      relevance_score: number | null;
+      relevance_reason: string | null;
+      discovered_by: string[];
+      status: "pending" | "approved" | "rejected";
+      created_at: Date;
+    }>
+  >`
+    select * from discovery_candidates
+    order by
+      case status when 'pending' then 0 when 'approved' then 1 else 2 end,
+      relevance_score desc nulls last,
+      created_at desc
+  `;
+
+  return rows.map((row) => ({
+    id: row.id,
+    xUserId: row.x_user_id,
+    username: row.username,
+    name: row.name,
+    description: row.description,
+    profileImageUrl: row.profile_image_url,
+    followersCount: row.followers_count,
+    relevanceScore: row.relevance_score,
+    relevanceReason: row.relevance_reason,
+    discoveredBy: row.discovered_by,
+    status: row.status,
+    createdAt: row.created_at.toISOString()
+  }));
+}

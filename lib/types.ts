@@ -17,6 +17,9 @@ export type Builder = {
   followersCount: number | null;
   verified: boolean;
   lastSyncedAt: string | null;
+  focusSummary: string | null;
+  focusProducts: string[];
+  focusRelevance: number | null;
   posts: BuilderPost[];
 };
 

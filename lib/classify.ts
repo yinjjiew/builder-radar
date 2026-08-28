@@ -1,4 +1,4 @@
-import OpenAI from "openai";
+import { aiModel, getAiClient, hasAi } from "@/lib/ai";
 import type { XPost, XUser } from "@/lib/x";
 
 export type CandidateAssessment = {
@@ -35,14 +35,9 @@ export async function classifyCandidate(
   user: XUser,
   posts: XPost[]
 ): Promise<CandidateAssessment | null> {
-  if (!process.env.OPENAI_API_KEY?.trim()) return null;
+  if (!hasAi()) return null;
 
-  const client = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-    // Any OpenAI-compatible provider (DeepSeek, OpenRouter, a local server).
-    // Left unset, the SDK talks to OpenAI itself.
-    baseURL: process.env.OPENAI_BASE_URL?.trim() || undefined
-  });
+  const client = getAiClient();
   const postText = posts.map((post, index) => `${index + 1}. ${post.text}`).join("\n");
   const input = `Evaluate whether this X account belongs in Builder Radar.
 
@@ -58,8 +53,7 @@ Recent original posts:
 ${postText || "No recent original posts were available."}`;
 
   const response = await client.responses.create({
-    // `||` rather than `??`: a blank OPENAI_MODEL must fall back, not send "".
-    model: process.env.OPENAI_MODEL?.trim() || "gpt-5-mini",
+    model: aiModel(),
     input,
     text: {
       format: {

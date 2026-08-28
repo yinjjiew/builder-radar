@@ -54,6 +54,9 @@ export async function getBuilders(): Promise<Builder[]> {
       followersCount: null,
       verified: false,
       lastSyncedAt: null,
+      focusSummary: null,
+      focusProducts: [],
+      focusRelevance: null,
       posts: []
     }));
   }
@@ -69,6 +72,9 @@ export async function getBuilders(): Promise<Builder[]> {
       followers_count: number | null;
       verified: boolean;
       last_synced_at: Date | null;
+      focus_summary: string | null;
+      focus_products: string[];
+      focus_relevance: number | null;
       posts: Array<{
         id: string;
         text: string;
@@ -89,6 +95,9 @@ export async function getBuilders(): Promise<Builder[]> {
       c.followers_count,
       c.verified,
       c.last_synced_at,
+      c.focus_summary,
+      c.focus_products,
+      c.focus_relevance,
       coalesce(
         (
           select json_agg(recent_posts order by recent_posts.created_at desc)
@@ -117,6 +126,9 @@ export async function getBuilders(): Promise<Builder[]> {
     followersCount: row.followers_count,
     verified: row.verified,
     lastSyncedAt: row.last_synced_at?.toISOString() ?? null,
+    focusSummary: row.focus_summary,
+    focusProducts: row.focus_products ?? [],
+    focusRelevance: row.focus_relevance,
     posts: row.posts.map((post) => ({
       id: post.id,
       text: post.text,

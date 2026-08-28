@@ -20,7 +20,7 @@ export default async function HomePage() {
             <span className="radar-mark" aria-hidden="true"><i /></span>
             Builder Radar
           </Link>
-          <a href="#directory" className="nav-link">Explore directory</a>
+          <Link href="/insights" className="nav-link">Demand signals</Link>
         </nav>
 
         <div className="hero-copy">
@@ -28,12 +28,18 @@ export default async function HomePage() {
           <h1>See what the internet’s most inventive builders are making.</h1>
           <p className="hero-description">
             A focused feed of design engineers and creative developers—ranked by audience,
-            updated from their latest original posts.
+            updated from their latest original posts. Every six hours an AI reads what each
+            one shipped and{" "}
+            <Link href="/insights" className="hero-inline-link">
+              measures which of it the audience actually rewards
+            </Link>
+            .
           </p>
           <div className="hero-stats" aria-label="Directory details">
             <div><strong>{builders.length}</strong><span>curated builders</span></div>
             <div><strong>5</strong><span>recent posts each</span></div>
             <div><strong>6h</strong><span>refresh cycle</span></div>
+            <div><strong>AI</strong><span>demand analysis</span></div>
           </div>
         </div>
 

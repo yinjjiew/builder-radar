@@ -1,6 +1,6 @@
 import Image from "next/image";
 import type { Builder } from "@/lib/types";
-import { compactNumber, relativeDate } from "@/lib/format";
+import { cleanPostText, compactNumber, relativeDate } from "@/lib/format";
 
 export function BuilderCard({ builder, rank }: { builder: Builder; rank: number }) {
   return (
@@ -50,6 +50,28 @@ export function BuilderCard({ builder, rank }: { builder: Builder; rank: number 
 
         <p className="bio">{builder.description || "No biography available."}</p>
 
+        {builder.focusSummary ? (
+          <div className="builder-focus">
+            <p className="builder-focus-head">
+              <span>What they are building now</span>
+              {builder.focusRelevance !== null ? (
+                <span className="relevance-chip">{builder.focusRelevance}/100 relevance</span>
+              ) : null}
+            </p>
+            <p>{builder.focusSummary}</p>
+            {builder.focusProducts.length ? (
+              <p className="focus-products">
+                <span>Products</span>
+                {builder.focusProducts.map((product) => (
+                  <span className="tag" key={product}>
+                    {product}
+                  </span>
+                ))}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+
         <div className="posts-heading">
           <span>Recent builds</span>
           {builder.lastSyncedAt ? <span>Updated {relativeDate(builder.lastSyncedAt)} ago</span> : null}
@@ -60,7 +82,7 @@ export function BuilderCard({ builder, rank }: { builder: Builder; rank: number 
             {builder.posts.map((post) => (
               <li key={post.id}>
                 <a href={post.url} target="_blank" rel="noreferrer" className="post-link">
-                  <span className="post-text">{post.text}</span>
+                  <span className="post-text">{cleanPostText(post.text, 200)}</span>
                   <span className="post-meta">
                     <span>{relativeDate(post.createdAt)}</span>
                     <span>♥ {compactNumber(post.likeCount)}</span>

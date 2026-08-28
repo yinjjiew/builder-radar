@@ -11,6 +11,10 @@ const seedUsernames = new Set<string>(
   seedCreators.map((creator) => creator.username.toLowerCase())
 );
 
+// Server-side cap so a stuck query fails the request instead of holding the
+// serverless function open until the platform kills it.
+const STATEMENT_TIMEOUT_MS = 20_000;
+
 let client: Sql | null = null;
 
 export function hasDatabase() {
@@ -27,7 +31,12 @@ export function getDb() {
       max: 1,
       prepare: false,
       idle_timeout: 20,
-      connect_timeout: 15
+      connect_timeout: 15,
+      // Requires Supabase's SESSION pooler (port 5432), not the transaction
+      // pooler (6543). postgres.js pipelines queued queries onto a busy
+      // connection, which transaction-mode Supavisor never answers, wedging
+      // every later request behind it. See README.
+      connection: { statement_timeout: STATEMENT_TIMEOUT_MS }
     });
   }
 

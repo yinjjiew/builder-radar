@@ -63,10 +63,35 @@ Generate `CRON_SECRET` and `ADMIN_PASSWORD` as long random strings. Do not reuse
 ## Easiest database setup
 
 1. Create a Supabase or Neon project.
-2. Copy its pooled PostgreSQL connection string into `DATABASE_URL`.
+2. Copy its connection string into `DATABASE_URL`. On Supabase, read the warning
+   below before choosing which one.
 3. Open the provider's SQL editor.
 4. Paste each file in `migrations/` in filename order, starting with `001_init.sql`.
 5. Click **Run** after each one.
+
+### Supabase: use the session pooler, not the transaction pooler
+
+Supabase offers three connection strings. Use the **session pooler**, on the
+**pooler** hostname at **port 5432**:
+
+```text
+postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require
+```
+
+The other two both fail:
+
+- **Transaction pooler, port 6543** — hangs. `postgres.js` pipelines queued
+  queries onto an already-busy connection, and transaction-mode Supavisor never
+  answers them. Any request that has to wait for a connection blocks forever and
+  wedges every request behind it, so two simultaneous visitors can deadlock the
+  site. Measured: with `max: 1`, four of five concurrent queries never returned.
+- **Direct connection, `db.<ref>.supabase.co`** — unreachable. It resolves to
+  IPv6 only unless you buy the IPv4 add-on, and neither WSL nor Vercel functions
+  can route to it.
+
+The session pooler is also markedly faster here: 20 concurrent queries completed
+in 204 ms, against roughly 1000 ms for a single query through the transaction
+pooler.
 
 Alternatively, if you have Node.js and a terminal:
 

@@ -1,7 +1,66 @@
 import { classifyCandidate } from "@/lib/classify";
 import { getDb } from "@/lib/db";
 import { seedCreators } from "@/lib/seed-creators";
-import { getAllFollowing, getUserPosts, lookupUsersByUsernames, type XUser } from "@/lib/x";
+import {
+  getAllFollowing,
+  getPostsByIds,
+  getUserPosts,
+  lookupUsersByUsernames,
+  type XUser
+} from "@/lib/x";
+
+// A post's likes keep climbing for roughly two days, so anything measured before
+// then is not yet comparable. Posts older than the window are left alone: their
+// counts have settled and re-reading them would only cost X API quota.
+const REFRESH_WINDOW_DAYS = 14;
+const MATURITY_HOURS = 48;
+const REFRESH_BATCH = 100;
+
+/**
+ * Brings stored like/repost/reply counts back up to date for a bounded window of
+ * recent posts. Prioritises posts whose metrics were captured before they had
+ * time to mature, then anything not re-read in the last three days.
+ */
+async function refreshRecentMetrics() {
+  const sql = getDb();
+  const rows = await sql<{ id: string }[]>`
+    select id from posts
+    where created_at > now() - ${`${REFRESH_WINDOW_DAYS} days`}::interval
+      and (
+        metrics_refreshed_at is null
+        or metrics_refreshed_at < created_at + ${`${MATURITY_HOURS} hours`}::interval
+        or metrics_refreshed_at < now() - interval '3 days'
+      )
+    order by created_at desc
+    limit ${REFRESH_BATCH}
+  `;
+
+  if (!rows.length) return { refreshed: 0, missing: 0 };
+
+  const ids = rows.map((row) => row.id);
+  let fresh: Awaited<ReturnType<typeof getPostsByIds>>;
+  try {
+    fresh = await getPostsByIds(ids);
+  } catch {
+    // Every requested post being deleted makes X return errors with no data.
+    // That is not a reason to fail the whole sync.
+    return { refreshed: 0, missing: ids.length };
+  }
+
+  for (const post of fresh) {
+    await sql`
+      update posts set
+        text = ${post.text},
+        like_count = ${post.public_metrics?.like_count ?? 0},
+        repost_count = ${post.public_metrics?.retweet_count ?? 0},
+        reply_count = ${post.public_metrics?.reply_count ?? 0},
+        metrics_refreshed_at = now()
+      where id = ${post.id}
+    `;
+  }
+
+  return { refreshed: fresh.length, missing: ids.length - fresh.length };
+}
 
 async function beginRun(kind: "posts" | "following") {
   const sql = getDb();
@@ -80,20 +139,21 @@ export async function syncCreatorsAndPosts() {
           await sql`
             insert into posts (
               id, creator_id, text, url, created_at,
-              like_count, repost_count, reply_count, fetched_at
+              like_count, repost_count, reply_count, fetched_at, metrics_refreshed_at
             ) values (
               ${post.id}, ${creator.id}, ${post.text},
               ${`https://x.com/${user.username}/status/${post.id}`}, ${post.created_at},
               ${post.public_metrics?.like_count ?? 0},
               ${post.public_metrics?.retweet_count ?? 0},
-              ${post.public_metrics?.reply_count ?? 0}, now()
+              ${post.public_metrics?.reply_count ?? 0}, now(), now()
             )
             on conflict (id) do update set
               text = excluded.text,
               like_count = excluded.like_count,
               repost_count = excluded.repost_count,
               reply_count = excluded.reply_count,
-              fetched_at = now()
+              fetched_at = now(),
+              metrics_refreshed_at = now()
           `;
           postsUpserted += 1;
         }
@@ -105,7 +165,9 @@ export async function syncCreatorsAndPosts() {
       }
     }
 
-    const detail = { creatorsFound: users.length, postsUpserted, errors };
+    const metrics = await refreshRecentMetrics();
+
+    const detail = { creatorsFound: users.length, postsUpserted, metrics, errors };
     await finishRun(runId, errors.length === users.length ? "failed" : "succeeded", detail);
     return detail;
   } catch (error) {

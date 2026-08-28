@@ -119,6 +119,25 @@ export async function getUserPosts(userId: string, sinceId?: string | null) {
   return response.data ?? [];
 }
 
+/**
+ * Re-reads metrics for posts already stored. `getUserPosts` uses since_id and so
+ * never revisits a post, which froze every like count at whatever it happened to
+ * be minutes after publishing. Comparing engagement across posts requires
+ * counts measured at a similar age, so the sync refreshes a recent window.
+ */
+export async function getPostsByIds(ids: string[]) {
+  const posts: XPost[] = [];
+  for (let index = 0; index < ids.length; index += 100) {
+    const batch = ids.slice(index, index + 100);
+    const response = await xFetch<XPost[]>("/tweets", {
+      ids: batch.join(","),
+      "tweet.fields": "created_at,public_metrics"
+    });
+    posts.push(...(response.data ?? []));
+  }
+  return posts;
+}
+
 export async function getAllFollowing(userId: string) {
   const users: XUser[] = [];
   let paginationToken: string | undefined;

@@ -1,6 +1,15 @@
 import postgres, { type Sql } from "postgres";
 import { seedCreators } from "@/lib/seed-creators";
-import type { Builder, DiscoveryCandidate } from "@/lib/types";
+import type {
+  Builder,
+  CreatorStatus,
+  DiscoveryCandidate,
+  ManagedCreator
+} from "@/lib/types";
+
+const seedUsernames = new Set<string>(
+  seedCreators.map((creator) => creator.username.toLowerCase())
+);
 
 let client: Sql | null = null;
 
@@ -108,6 +117,51 @@ export async function getBuilders(): Promise<Builder[]> {
       repostCount: post.repost_count,
       replyCount: post.reply_count
     }))
+  }));
+}
+
+export async function getManagedCreators(): Promise<ManagedCreator[]> {
+  if (!hasDatabase()) return [];
+  const sql = getDb();
+  const rows = await sql<
+    Array<{
+      id: string;
+      username: string;
+      name: string;
+      profile_image_url: string | null;
+      followers_count: number | null;
+      status: CreatorStatus;
+      last_synced_at: Date | null;
+      post_count: string;
+    }>
+  >`
+    select
+      c.id,
+      c.username,
+      c.name,
+      c.profile_image_url,
+      c.followers_count,
+      c.status,
+      c.last_synced_at,
+      (select count(*) from posts p where p.creator_id = c.id) as post_count
+    from creators c
+    where c.status <> 'removed'
+    order by
+      case c.status when 'approved' then 0 else 1 end,
+      c.followers_count desc nulls last,
+      lower(c.username) asc
+  `;
+
+  return rows.map((row) => ({
+    id: row.id,
+    username: row.username,
+    name: row.name,
+    profileImageUrl: row.profile_image_url,
+    followersCount: row.followers_count,
+    status: row.status,
+    lastSyncedAt: row.last_synced_at?.toISOString() ?? null,
+    postCount: Number(row.post_count),
+    isSeed: seedUsernames.has(row.username.toLowerCase())
   }));
 }
 

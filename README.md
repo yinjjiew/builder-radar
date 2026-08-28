@@ -17,10 +17,10 @@ The project is ready for GitHub and Vercel. It uses:
 - Five recent original posts are shown for each creator.
 - Replies and reposts are excluded.
 - Posts and follower counts update every six hours.
-- Following lists update daily.
-- The first following check creates a baseline and discovers nobody.
-- Later checks send only newly followed accounts to the candidate classifier.
-- Candidates require approval at `/admin` before entering the public directory.
+- Builders are curated by hand at `/admin`: add by username, pause, or remove.
+- Paused and removed builders stay that way; seeding never resurrects them.
+- Automatic follow-graph discovery exists but is **not scheduled**, because it is
+  expensive. See [X API cost](#x-api-cost).
 
 ## Architecture
 
@@ -56,6 +56,7 @@ Never put real secret values in GitHub. Copy `.env.example` to `.env.local` for 
 | `ADMIN_PASSWORD` | Password for `/admin` |
 | `OPENAI_API_KEY` | Optional AI candidate classification |
 | `OPENAI_MODEL` | Classification model; defaults to `gpt-5-mini` |
+| `SITE_URL` | Optional canonical URL for social share images |
 
 Generate `CRON_SECRET` and `ADMIN_PASSWORD` as long random strings. Do not reuse your normal passwords.
 
@@ -64,8 +65,8 @@ Generate `CRON_SECRET` and `ADMIN_PASSWORD` as long random strings. Do not reuse
 1. Create a Supabase or Neon project.
 2. Copy its pooled PostgreSQL connection string into `DATABASE_URL`.
 3. Open the provider's SQL editor.
-4. Copy all of `migrations/001_init.sql` into the editor.
-5. Click **Run**.
+4. Paste each file in `migrations/` in filename order, starting with `001_init.sql`.
+5. Click **Run** after each one.
 
 Alternatively, if you have Node.js and a terminal:
 
@@ -108,14 +109,23 @@ The `.gitignore` file prevents `.env.local`, the Bearer Token, dependencies, and
 4. Add every required environment variable before deployment.
 5. Click **Deploy**.
 
-Vercel detects Next.js automatically. `vercel.json` configures:
+Vercel detects Next.js automatically. `vercel.json` configures one cron job:
 
 ```text
 /api/cron/update-posts      every 6 hours
-/api/cron/check-following   every day at 02:17 UTC
 ```
 
-After deployment, the first post cron populates the ten profiles and their posts. The first following cron only creates the baseline. New candidate discovery begins on the next daily run.
+**This schedule requires a Vercel Pro plan.** Hobby accounts are limited to one cron
+run per day, and any more frequent expression fails at deploy time with
+`Hobby accounts are limited to daily cron jobs`. On Hobby, either change the schedule
+to something like `0 5 * * *` or point an external scheduler at the route:
+
+```bash
+curl -H "Authorization: Bearer YOUR_CRON_SECRET" \
+  https://YOUR-VERCEL-DOMAIN/api/cron/update-posts
+```
+
+After deployment, the first post cron populates the ten seeded profiles and their posts.
 
 ## Trigger the first sync manually
 
@@ -128,7 +138,7 @@ curl -H "Authorization: Bearer YOUR_CRON_SECRET" \
 
 Do not put the real secret in a public screenshot or message.
 
-## Review newly discovered accounts
+## Curate the directory
 
 Visit:
 
@@ -136,18 +146,50 @@ Visit:
 https://YOUR-VERCEL-DOMAIN/admin
 ```
 
-The browser asks for `ADMIN_USERNAME` and `ADMIN_PASSWORD`. Each candidate shows:
+The browser asks for `ADMIN_USERNAME` and `ADMIN_PASSWORD`. The page offers:
 
-- Profile and follower count
-- Which approved creator newly followed them
-- AI relevance score and explanation, when configured
-- Approve and Reject controls
+- **Add a builder** — paste an X username, `@handle`, or profile URL. The profile is
+  looked up immediately when possible; otherwise the next sync fills in the details.
+- **Pause** — hides a builder from the public directory and stops syncing their posts,
+  without discarding the posts already stored.
+- **Remove** — hides them permanently. Seeded builders will not come back.
+- **Discovered candidates** — the review queue, populated only when you run a
+  discovery pass by hand.
 
-Approving a candidate adds them to the public directory. Their posts appear after the next six-hour post sync.
+## X API cost
 
-## Important cost note
+X moved to pay-per-use in February 2026 and discontinued the free tier. The legacy
+$200/month Basic plan was retired and its subscribers were migrated to pay-per-use;
+new developers cannot buy a flat tier. Billing is per resource returned:
 
-The X API uses pay-per-use pricing. Following-list checks can be more expensive than post updates because large following lists require multiple pages. Check X usage after the first baseline and adjust the daily schedule if needed.
+| Resource | Unit cost |
+|---|---|
+| Post read | $0.005 |
+| User read | $0.010 |
+| Following/followers read | $0.010 |
+
+**The post sync is cheap.** Each run reads 10 user profiles plus any genuinely new
+posts, since `getUserPosts` passes `since_id`. At the six-hour cadence that is roughly
+**$20–25/month**.
+
+**Follow-graph discovery is not.** `getAllFollowing` must re-download each creator's
+complete following list on every pass, because the X API offers no "recently followed"
+endpoint. Ten creators following about a thousand accounts each is 10,000 billable
+resources, or about **$100 per pass**. Run daily, that is **~$3,000/month**.
+
+This is why `/api/cron/check-following` is deliberately absent from `vercel.json`.
+The endpoint still works and is still protected by `CRON_SECRET`, so you can run a
+deliberate pass and pay for it knowingly:
+
+```bash
+curl -H "Authorization: Bearer YOUR_CRON_SECRET" \
+  https://YOUR-VERCEL-DOMAIN/api/cron/check-following
+```
+
+Before doing that, consider narrowing the creator set to two or three "scouts", since
+cost scales linearly with the number of approved creators. Note also that the route
+sets `maxDuration = 300`, and a full pass over many creators plus one OpenAI call per
+candidate can exceed that and be killed mid-run.
 
 ## Verification completed
 
@@ -158,3 +200,4 @@ The X API uses pay-per-use pricing. Following-list checks can be more expensive 
 - Public page responds successfully in preview mode
 - Cron endpoint rejects unauthenticated requests
 - Admin page remains closed until admin credentials are configured
+- Admin basic auth uses constant-time comparison and UTF-8 safe decoding

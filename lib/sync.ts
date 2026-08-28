@@ -28,10 +28,12 @@ async function finishRun(
 async function ensureSeedRows() {
   const sql = getDb();
   for (const seed of seedCreators) {
+    // do nothing on conflict: an existing row may have been paused or removed
+    // deliberately from /admin, and that decision must survive every sync.
     await sql`
       insert into creators (username, name, description, status)
       values (${seed.username}, ${seed.label}, ${seed.summary}, 'approved')
-      on conflict (username) do update set status = 'approved'
+      on conflict (username) do nothing
     `;
   }
 }

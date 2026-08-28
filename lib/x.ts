@@ -42,30 +42,58 @@ function token() {
   return process.env.X_BEARER_TOKEN;
 }
 
+const MAX_ATTEMPTS = 4;
+const MAX_RETRY_WAIT_MS = 60_000;
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Wait for the window named by x-rate-limit-reset (absolute epoch seconds),
+ * falling back to exponential backoff when the header is absent or implausible.
+ */
+function retryDelayMs(response: Response, attempt: number) {
+  const reset = Number(response.headers.get("x-rate-limit-reset"));
+  if (Number.isFinite(reset) && reset > 0) {
+    const wait = reset * 1000 - Date.now();
+    if (wait > 0) return Math.min(wait + 1_000, MAX_RETRY_WAIT_MS);
+  }
+  return Math.min(2 ** attempt * 1_000, MAX_RETRY_WAIT_MS);
+}
+
 async function xFetch<T>(path: string, params: Record<string, string>) {
   const url = new URL(`${X_API_BASE}${path}`);
   for (const [key, value] of Object.entries(params)) {
     if (value) url.searchParams.set(key, value);
   }
 
-  const response = await fetch(url, {
-    headers: { Authorization: `Bearer ${token()}` },
-    cache: "no-store"
-  });
+  let lastError = "";
 
-  if (!response.ok) {
-    const reset = response.headers.get("x-rate-limit-reset");
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${token()}` },
+      cache: "no-store"
+    });
+
+    if (response.ok) {
+      const payload = (await response.json()) as XResponse<T>;
+      if (payload.errors?.length && !payload.data) {
+        throw new Error(payload.errors.map((error) => error.detail ?? error.title).join("; "));
+      }
+      return payload;
+    }
+
     const body = await response.text();
-    throw new Error(
-      `X API ${response.status}${reset ? ` (reset ${reset})` : ""}: ${body.slice(0, 500)}`
-    );
+    lastError = `X API ${response.status}: ${body.slice(0, 500)}`;
+
+    const retryable = response.status === 429 || response.status >= 500;
+    if (!retryable || attempt === MAX_ATTEMPTS - 1) break;
+
+    await sleep(retryDelayMs(response, attempt));
   }
 
-  const payload = (await response.json()) as XResponse<T>;
-  if (payload.errors?.length && !payload.data) {
-    throw new Error(payload.errors.map((error) => error.detail ?? error.title).join("; "));
-  }
-  return payload;
+  throw new Error(lastError);
 }
 
 export async function lookupUsersByUsernames(usernames: string[]) {

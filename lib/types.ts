@@ -20,6 +20,20 @@ export type Builder = {
   posts: BuilderPost[];
 };
 
+export type CreatorStatus = "approved" | "paused" | "removed";
+
+export type ManagedCreator = {
+  id: string;
+  username: string;
+  name: string;
+  profileImageUrl: string | null;
+  followersCount: number | null;
+  status: CreatorStatus;
+  lastSyncedAt: string | null;
+  postCount: number;
+  isSeed: boolean;
+};
+
 export type DiscoveryCandidate = {
   id: string;
   xUserId: string;

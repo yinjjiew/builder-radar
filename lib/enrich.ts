@@ -2,19 +2,28 @@ import { aiModel, hasAi } from "@/lib/ai";
 import { getDb } from "@/lib/db";
 import {
   ANALYSIS_WINDOW,
+  PROMPT_VERSION,
   summariseCreator,
   writeStrategyBrief,
   type FocusInput
 } from "@/lib/insights";
-import { artifactLabel, audienceLabel, intentLabel, themeLabel } from "@/lib/mission";
+import {
+  artifactLabel,
+  audienceLabel,
+  intentLabel,
+  productCategoryLabel,
+  themeLabel
+} from "@/lib/mission";
 import {
   getBreakoutPosts,
+  getCategoryStats,
   getCorpusHealth,
   getCreatorFocus,
   getNocodeSplit,
   getTagStats,
   getThemeStats
 } from "@/lib/stats";
+import { markCyclePhase } from "@/lib/sync";
 
 // The route allows 300s. Stopping short leaves room for the bookkeeping write;
 // whatever is skipped returns next cycle, because its focus_latest_post_id still
@@ -31,6 +40,8 @@ const MIN_TAGGED_FOR_BRIEF = 10;
 // than this was certainly killed, so it is closed out rather than left to
 // confuse the next reader.
 const STALE_RUN_MINUTES = 15;
+// How many past briefs stay browsable on /insights.
+export const KEEP_REPORTS = 8;
 
 type RunKind = "insights" | "brief";
 
@@ -98,7 +109,7 @@ async function selectCandidates(): Promise<Candidate[]> {
         order by p.created_at desc limit ${ANALYSIS_WINDOW}
       ) recent
       left join post_insights pi on pi.post_id = recent.id
-      where pi.post_id is null
+      where pi.post_id is null or pi.prompt_version < ${PROMPT_VERSION}
     ) untagged on true
     where c.status = 'approved'
     order by c.followers_count desc nulls last
@@ -160,19 +171,23 @@ async function enrichCreator(candidate: Candidate) {
   for (const tag of focus.posts) {
     await sql`
       insert into post_insights (
-        post_id, themes, artifact, intent, audience, nocode_signal, note, model
+        post_id, themes, artifact, product_category, intent, audience,
+        nocode_signal, note, model, prompt_version
       ) values (
-        ${tag.id}, ${sql.array(tag.themes)}, ${tag.artifact}, ${tag.intent},
-        ${tag.audience}, ${tag.nocodeSignal}, ${tag.note}, ${model}
+        ${tag.id}, ${sql.array(tag.themes)}, ${tag.artifact}, ${tag.productCategory},
+        ${tag.intent}, ${tag.audience}, ${tag.nocodeSignal}, ${tag.note},
+        ${model}, ${PROMPT_VERSION}
       )
       on conflict (post_id) do update set
         themes = excluded.themes,
         artifact = excluded.artifact,
+        product_category = excluded.product_category,
         intent = excluded.intent,
         audience = excluded.audience,
         nocode_signal = excluded.nocode_signal,
         note = excluded.note,
         model = excluded.model,
+        prompt_version = excluded.prompt_version,
         updated_at = now()
     `;
   }
@@ -197,7 +212,7 @@ async function enrichCreator(candidate: Candidate) {
  * Splitting this from the brief keeps both inside the function time limit, and
  * lets either be retried without redoing the other.
  */
-export async function runEnrichment() {
+export async function runEnrichment(cycleId: string | null = null) {
   const startedAt = Date.now();
   const runId = await beginRun("insights");
   const errors: Array<{ username: string; error: string }> = [];
@@ -243,6 +258,7 @@ export async function runEnrichment() {
       errors
     };
     await finishRun(runId, errors.length && !summarised ? "failed" : "succeeded", detail);
+    await markCyclePhase(cycleId, "enriched_at", { enrich: detail });
     return detail;
   } catch (error) {
     const detail = {
@@ -272,11 +288,12 @@ const round = (value: number, digits = 2) => Number(value.toFixed(digits));
  * something the reader can check against the same tables on the page.
  */
 export async function buildEvidence() {
-  const [health, themes, artifacts, intents, audiences, nocode, breakouts, creators] =
+  const [health, themes, artifacts, categories, intents, audiences, nocode, breakouts, creators] =
     await Promise.all([
       getCorpusHealth(),
       getThemeStats(),
       getTagStats("artifact"),
+      getCategoryStats(),
       getTagStats("intent"),
       getTagStats("audience"),
       getNocodeSplit(),
@@ -303,6 +320,25 @@ export async function buildEvidence() {
     "",
     table("THEMES (what is being built)", dimension(themes, themeLabel)),
     table("ARTIFACT (what kind of thing shipped)", dimension(artifacts, artifactLabel)),
+    table(
+      "PRODUCT CATEGORY (ranked by average likes per 1k; avg far above median means one hit is carrying it)",
+      categories.map((row) => ({
+        category: productCategoryLabel(row.key),
+        n: row.posts,
+        builders: row.creators,
+        avg_likes: round(row.avgLikes, 0),
+        median_likes: round(row.medianLikes, 0),
+        avg_likes_per_1k: round(row.avgEngagement),
+        median_likes_per_1k: round(row.medianEngagement),
+        median_breakout: row.medianBreakout === null ? "n/a" : round(row.medianBreakout),
+        share_of_corpus: `${round(row.share * 100, 1)}%`,
+        best: row.examples[0]
+          ? `@${row.examples[0].username}: ${(row.examples[0].note ?? row.examples[0].text)
+              .replace(/\s+/g, " ")
+              .slice(0, 90)}`
+          : "none"
+      }))
+    ),
     table("INTENT (how it was presented)", dimension(intents, intentLabel)),
     table("AUDIENCE (who it was aimed at)", dimension(audiences, audienceLabel)),
     table(
@@ -341,7 +377,7 @@ export async function buildEvidence() {
 }
 
 /** Phase two: read the statistics and write the founder-facing brief. */
-export async function runStrategyBrief() {
+export async function runStrategyBrief(cycleId: string | null = null) {
   const sql = getDb();
   const startedAt = Date.now();
   const runId = await beginRun("brief");
@@ -382,6 +418,16 @@ export async function runStrategyBrief() {
       )
     `;
 
+    // Each brief is a snapshot of a moving corpus, so the history is worth
+    // keeping to see how the reading changes. Beyond eight the older ones stop
+    // being comparable to today's much larger sample.
+    await sql`
+      delete from insight_reports
+      where id not in (
+        select id from insight_reports order by created_at desc limit ${KEEP_REPORTS}
+      )
+    `;
+
     const detail = {
       phase: "brief",
       brief: "written",
@@ -390,6 +436,7 @@ export async function runStrategyBrief() {
       elapsedMs: Date.now() - startedAt
     };
     await finishRun(runId, "succeeded", detail);
+    await markCyclePhase(cycleId, "brief_at", { brief: detail });
     return detail;
   } catch (error) {
     const detail = {

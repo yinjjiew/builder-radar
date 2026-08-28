@@ -70,6 +70,8 @@ export type BreakoutRow = {
   note: string | null;
   themes: string[];
   artifact: string | null;
+  productCategory: string | null;
+  mature: boolean;
   nocodeSignal: number | null;
 };
 
@@ -346,8 +348,129 @@ function toBreakoutRow(row: Record<string, unknown>): BreakoutRow {
     note: row.note ? String(row.note) : null,
     themes: Array.isArray(row.themes) ? (row.themes as string[]) : [],
     artifact: row.artifact ? String(row.artifact) : null,
+    productCategory: row.product_category ? String(row.product_category) : null,
+    mature: row.mature === undefined ? true : Boolean(row.mature),
     nocodeSignal: maybeNum(row.nocode_signal)
   };
+}
+
+export type PostRankMetric = "likes" | "rate";
+
+/**
+ * The post leaderboard.
+ *
+ * Unlike the dimension tables this does not filter to mature posts. A post whose
+ * likes were last read an hour after publishing is undercounted, so including it
+ * can only rank it too low, never too high — there is no way for a fresh post to
+ * steal a place it has not earned. Immature rows are flagged instead of hidden so
+ * a genuine new hit can show up on the day it lands.
+ *
+ * Ranking by likes rewards whoever has the biggest audience; ranking by likes per
+ * 1,000 followers rewards whatever resonated hardest relative to reach. They
+ * produce very different lists, which is the point of offering both.
+ */
+export async function getTopPosts(
+  metric: PostRankMetric,
+  limit = 30
+): Promise<BreakoutRow[]> {
+  if (!hasDatabase()) return [];
+  const sql = getDb();
+  const order = metric === "likes" ? sql`s.like_count desc` : sql`s.engagement desc`;
+  const rows = await sql<Array<Record<string, unknown>>>`
+    ${scoredPosts(sql)}
+    select
+      s.id, s.username, s.text, s.url, s.created_at,
+      s.like_count, s.repost_count, s.followers_count,
+      s.engagement, s.breakout, s.mature,
+      pi.note, pi.themes, pi.artifact, pi.product_category, pi.nocode_signal
+    from scored s
+    left join post_insights pi on pi.post_id = s.id
+    where s.engagement is not null
+    order by ${order}, s.created_at desc
+    limit ${limit}
+  `;
+  return rows.map(toBreakoutRow);
+}
+
+export type CategoryRow = DimensionRow & {
+  avgLikes: number;
+  medianLikes: number;
+  avgEngagement: number;
+  share: number;
+  examples: BreakoutRow[];
+};
+
+/**
+ * Ranks product categories. Reports both the average and the median of each
+ * measure on purpose: the average is what a "which category wins" question
+ * usually means, but at these sample sizes one viral post drags an average a long
+ * way, and a category whose average sits far above its median is being carried by
+ * a single hit rather than performing consistently.
+ */
+export async function getCategoryStats(): Promise<CategoryRow[]> {
+  if (!hasDatabase()) return [];
+  const sql = getDb();
+
+  const rows = await sql<Array<Record<string, unknown>>>`
+    ${scoredPosts(sql)}
+    select
+      pi.product_category as key,
+      count(*) as posts,
+      count(distinct s.creator_id) as creators,
+      avg(s.like_count)::float8 as avg_likes,
+      percentile_cont(0.5) within group (order by s.like_count)::float8 as median_likes,
+      avg(s.engagement)::float8 as avg_engagement,
+      percentile_cont(0.5) within group (order by s.engagement)::float8 as median_engagement,
+      percentile_cont(0.5) within group (order by s.breakout)::float8 as median_breakout,
+      max(s.engagement)::float8 as top_engagement,
+      sum(s.like_count) as total_likes,
+      (sum(s.repost_count)::float8 / nullif(sum(s.like_count), 0)) as repost_rate,
+      count(*) filter (where s.created_at > now() - interval '30 days') as recent_posts,
+      avg(pi.nocode_signal)::float8 as avg_nocode_signal
+    from scored s
+    join post_insights pi on pi.post_id = s.id
+    where s.mature and s.engagement is not null and pi.product_category <> 'none'
+    group by pi.product_category
+    order by avg_engagement desc nulls last, posts desc
+  `;
+
+  const totalPosts = rows.reduce((sum, row) => sum + num(row.posts), 0);
+
+  // Best examples per category, taken in one pass rather than a query per row.
+  const exampleRows = await sql<Array<Record<string, unknown>>>`
+    ${scoredPosts(sql)}
+    , ranked as (
+      select
+        s.id, s.username, s.text, s.url, s.created_at,
+        s.like_count, s.repost_count, s.followers_count,
+        s.engagement, s.breakout, s.mature,
+        pi.note, pi.themes, pi.artifact, pi.product_category, pi.nocode_signal,
+        row_number() over (
+          partition by pi.product_category order by s.engagement desc
+        ) as rank
+      from scored s
+      join post_insights pi on pi.post_id = s.id
+      where s.mature and s.engagement is not null and pi.product_category <> 'none'
+    )
+    select * from ranked where rank <= 3
+  `;
+
+  const examples = new Map<string, BreakoutRow[]>();
+  for (const row of exampleRows) {
+    const key = String(row.product_category);
+    const list = examples.get(key) ?? [];
+    list.push(toBreakoutRow(row));
+    examples.set(key, list);
+  }
+
+  return rows.map((row) => ({
+    ...toDimensionRow(row),
+    avgLikes: num(row.avg_likes),
+    medianLikes: num(row.median_likes),
+    avgEngagement: num(row.avg_engagement),
+    share: totalPosts ? num(row.posts) / totalPosts : 0,
+    examples: examples.get(String(row.key)) ?? []
+  }));
 }
 
 /**
@@ -427,16 +550,8 @@ export async function getCreatorFocus(): Promise<CreatorFocusRow[]> {
   }));
 }
 
-export async function getLatestReport(): Promise<StrategyReport | null> {
-  if (!hasDatabase()) return null;
-  const sql = getDb();
-  const [row] = await sql<Array<Record<string, unknown>>>`
-    select * from insight_reports order by created_at desc limit 1
-  `;
-  if (!row) return null;
-
+function toReport(row: Record<string, unknown>): StrategyReport {
   const list = <T>(value: unknown): T[] => (Array.isArray(value) ? (value as T[]) : []);
-
   return {
     headline: String(row.headline ?? ""),
     demandRead: String(row.demand_read ?? ""),
@@ -446,5 +561,56 @@ export async function getLatestReport(): Promise<StrategyReport | null> {
     watchlist: list(row.watchlist),
     sample: (row.sample as Record<string, unknown>) ?? {},
     createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : ""
+  };
+}
+
+/**
+ * The retained history of briefs, newest first. Each was written against a
+ * different snapshot of the corpus, so reading them in sequence shows which
+ * conclusions held as the sample grew and which were artefacts of a thin one.
+ */
+export async function getReportHistory(limit = 8): Promise<StrategyReport[]> {
+  if (!hasDatabase()) return [];
+  const sql = getDb();
+  const rows = await sql<Array<Record<string, unknown>>>`
+    select * from insight_reports order by created_at desc limit ${limit}
+  `;
+  return rows.map(toReport);
+}
+
+export async function getLatestReport(): Promise<StrategyReport | null> {
+  const [report] = await getReportHistory(1);
+  return report ?? null;
+}
+
+export type CycleStatus = {
+  startedAt: string;
+  postsAt: string | null;
+  enrichedAt: string | null;
+  briefAt: string | null;
+  finishedAt: string | null;
+  complete: boolean;
+};
+
+/**
+ * The three phases run minutes apart because each has its own function timeout,
+ * so the site reports the cycle rather than three separate finish times.
+ */
+export async function getCycleStatus(): Promise<CycleStatus | null> {
+  if (!hasDatabase()) return null;
+  const sql = getDb();
+  const [row] = await sql<Array<Record<string, unknown>>>`
+    select * from sync_cycles order by started_at desc limit 1
+  `;
+  if (!row) return null;
+
+  const iso = (value: unknown) => (value instanceof Date ? value.toISOString() : null);
+  return {
+    startedAt: iso(row.started_at) ?? "",
+    postsAt: iso(row.posts_at),
+    enrichedAt: iso(row.enriched_at),
+    briefAt: iso(row.brief_at),
+    finishedAt: iso(row.finished_at),
+    complete: Boolean(row.finished_at)
   };
 }

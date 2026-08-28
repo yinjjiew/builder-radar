@@ -14,10 +14,13 @@ import {
   AUDIENCES,
   INTENTS,
   MISSION,
+  PRODUCT_CATEGORIES,
+  PRODUCT_CATEGORY_RULES,
   THEMES,
   type Artifact,
   type Audience,
   type Intent,
+  type ProductCategory,
   type Theme
 } from "@/lib/mission";
 
@@ -25,6 +28,7 @@ export type PostTag = {
   id: string;
   themes: Theme[];
   artifact: Artifact;
+  productCategory: ProductCategory;
   intent: Intent;
   audience: Audience;
   nocodeSignal: number;
@@ -59,14 +63,32 @@ export type FocusInput = {
  */
 export const ANALYSIS_WINDOW = 20;
 
+/**
+ * Bumped whenever the tagging prompt or vocabulary changes. Rows tagged under an
+ * older version are re-tagged, because a leaderboard built from two different
+ * prompts would partly be ranking the prompt rather than the posts. Version 2
+ * added product_category and the boundary rules that go with it.
+ */
+export const PROMPT_VERSION = 2;
+
 const postTagSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["id", "themes", "artifact", "intent", "audience", "nocode_signal", "note"],
+  required: [
+    "id",
+    "themes",
+    "artifact",
+    "product_category",
+    "intent",
+    "audience",
+    "nocode_signal",
+    "note"
+  ],
   properties: {
     id: { type: "string" },
     themes: { type: "array", items: { type: "string", enum: [...THEMES] } },
     artifact: { type: "string", enum: [...ARTIFACTS] },
+    product_category: { type: "string", enum: [...PRODUCT_CATEGORIES] },
     intent: { type: "string", enum: [...INTENTS] },
     audience: { type: "string", enum: [...AUDIENCES] },
     nocode_signal: { type: "integer", minimum: 0, maximum: 100 },
@@ -126,6 +148,9 @@ Rules:
 - "posts" must contain exactly one entry for every post id given below, using the id verbatim.
 - For each post, "nocode_signal" scores 0-100 how strongly it is evidence that non-engineers want to build this kind of thing themselves.
 - "note" is a short phrase naming what was built or claimed in that post.
+- "product_category" is what kind of product the post is about. Judge the thing that was made, not the medium of the post: a video showing a game is "game". Use "none" only when there is no product at all. Categories are compared against each other across the whole corpus, so apply these boundaries exactly:
+${PRODUCT_CATEGORY_RULES}
+- When a post could fit two categories, choose the one describing what the thing IS for its user, not how it was made. A polished landing page for an AI product is "website"; the AI product itself is "ai-agent". A component library demo is "ui-kit" even if the demo is beautiful.
 
 Builder: @${input.username} (${input.name})
 Followers: ${input.followersCount ?? "unknown"}
@@ -168,6 +193,7 @@ ${postLines || "(no recent posts available)"}`;
       id,
       themes: asEnumList(record.themes, THEMES),
       artifact: asEnum(record.artifact, ARTIFACTS, "none"),
+      productCategory: asEnum(record.product_category, PRODUCT_CATEGORIES, "none"),
       intent: asEnum(record.intent, INTENTS, "opinion"),
       audience: asEnum(record.audience, AUDIENCES, "mixed"),
       nocodeSignal: asScore(record.nocode_signal, 0) ?? 0,

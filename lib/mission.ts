@@ -73,6 +73,70 @@ export const THEME_LABELS: Record<Theme, string> = {
   video: "Video"
 };
 
+/**
+ * What kind of product the post is about. This is the dimension the category
+ * ranking groups by, and it is deliberately product-shaped ("a small tool that
+ * does one job") rather than form-shaped, because the question it answers is
+ * what an ordinary person would want to make — not what file type it shipped as.
+ */
+export const PRODUCT_CATEGORIES = [
+  "utility-tool",
+  "web-app",
+  "website",
+  "game",
+  "ui-kit",
+  "dev-tool",
+  "ai-agent",
+  "creative-visual",
+  "data-dashboard",
+  "mobile-app",
+  "browser-extension",
+  "content-course",
+  "api-service",
+  "automation",
+  "none"
+] as const;
+
+export type ProductCategory = (typeof PRODUCT_CATEGORIES)[number];
+
+export const PRODUCT_CATEGORY_LABELS: Record<ProductCategory, string> = {
+  "utility-tool": "Utility tool",
+  "web-app": "Web app",
+  website: "Website or landing page",
+  game: "Game or playable toy",
+  "ui-kit": "UI kit or design system",
+  "dev-tool": "Developer tool",
+  "ai-agent": "AI agent or assistant",
+  "creative-visual": "Creative visual piece",
+  "data-dashboard": "Dashboard or data view",
+  "mobile-app": "Mobile app",
+  "browser-extension": "Browser extension",
+  "content-course": "Course or written content",
+  "api-service": "API or service",
+  automation: "Automation or workflow",
+  none: "No product"
+};
+
+/**
+ * How each category is described to the model. Vague category names are the main
+ * cause of drifting tags, so each one gets a boundary rather than a synonym.
+ */
+export const PRODUCT_CATEGORY_RULES = `- utility-tool: a small focused thing that does one job well (a measurement overlay, a converter, a generator)
+- web-app: a multi-feature application someone signs into or uses repeatedly
+- website: a marketing site, landing page, portfolio, or microsite
+- game: a game or a playable toy with no purpose beyond play
+- ui-kit: components, primitives, templates, or a design system for others to build with
+- dev-tool: tooling whose user is a programmer (CLI, library, build tool, debugger)
+- ai-agent: something that acts on the user's behalf, not just answers
+- creative-visual: a 3D scene, shader, generative artwork, or motion piece shown for its own sake
+- data-dashboard: charts, analytics, or a data view
+- mobile-app: an iOS or Android app
+- browser-extension: an extension
+- content-course: the product is the teaching itself (a course, tutorial series, video, article)
+- api-service: a backend, API, or hosted service
+- automation: a workflow, integration, or pipeline that runs without a person
+- none: the post is an opinion, a question, or news, with no product in it`;
+
 export const ARTIFACTS = [
   "app",
   "website",
@@ -133,6 +197,10 @@ export const AUDIENCE_LABELS: Record<Audience, string> = {
   "non-technical": "Non-technical people",
   mixed: "Mixed audience"
 };
+
+export function productCategoryLabel(value: string) {
+  return PRODUCT_CATEGORY_LABELS[value as ProductCategory] ?? value;
+}
 
 export function themeLabel(value: string) {
   return THEME_LABELS[value as Theme] ?? value;

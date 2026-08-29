@@ -114,14 +114,14 @@ finely that eight categories held fewer than five posts each. `component-library
 and `motion-interaction` were being told apart on whether a UI piece was shown
 still or moving; `dev-tool` and `creative-tool` on whether the user writes code.
 Both distinctions are real and neither was worth a category, because both sides
-ended up too thin to rank. **Seven values with real sample sizes answer more
+ended up too thin to rank. **Values with real sample sizes answer more
 questions than twelve precise ones that each measure noise.**
 
 The set, in precedence order:
 
 | Category | What it means |
 |---|---|
-| `teaching` | The thing handed over is the explanation: tutorial, breakdown, course, stream, talk |
+| `education` | The post exists so somebody learns: a tutorial, breakdown, course, stream or talk, and equally an interactive explainer, learning app or study aid built so they learn without the builder present |
 | `client-work` | Made for a client, brand or employer, however it was built |
 | `game` | A game: rules and an objective, something that can be won or lost |
 | `utility-tool` | Exists to get something done: utility, editor, generator, dashboard, or a library that does that job for people who write code |
@@ -139,7 +139,7 @@ Two properties make the set countable, and both matter more than the names:
   is resolved by precedence rather than by the model's mood, which is what stops
   the same post landing in a different bucket every cycle. Work delivered for a
   client is `client-work` whether or not it is 3D; a post explaining a technique
-  is `teaching` whatever the technique was; a portfolio is `own-product` however
+  is `education` whatever the technique was; a portfolio is `own-product` however
   it is rendered.
 
 Two of the boundaries are worth stating outright, because they are the ones a
@@ -153,6 +153,14 @@ reader will test:
 - **A UI component and the way it moves are one category.** `interface-craft`
   covers both, and beats `interactive-3d` whenever what is shown is part of an
   interface, even if it is rendered with WebGL.
+- **A lesson and a learning product are one category.** `education` covers both
+  the builder explaining — a thread, a video, a talk, where the post is their
+  words — and a thing they built that does the explaining without them, where the
+  post is a link to it. Splitting them was tried and abandoned: the reason for
+  the work is identical, and the corpus produced one post of the second kind in
+  the first three hundred, which is a thin sample rather than a category. Because
+  `education` sits above `game` and everything below it, a game made to teach
+  files here too: what a thing is for says more than what it is made of.
 - **A toy is not a game.** `game` requires an objective: levels, a score,
   something to win or lose, a puzzle to solve. A scene you can drag, spin or
   disturb has none of that and files as `interactive-3d`, next to the shaders and
@@ -212,7 +220,7 @@ set](#the-category-set) for why that distinction is the whole point. Version 3
 replaced the vocabulary outright. Version 4 merged it to seven values and
 reordered them, which changes real judgements and not only names: a builder's own
 utility now files as a tool rather than as their own product. Version 5 split
-games from toys.
+games from toys, and version 6 renamed `teaching` to `education` and widened it.
 
 A vocabulary change is applied in two steps rather than one. The old values are
 first remapped in SQL, because every one of them maps onto exactly one new value,

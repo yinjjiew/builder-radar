@@ -82,9 +82,11 @@ export const ANALYSIS_WINDOW = 20;
  * builder's own utility now files as a tool rather than as their own product.
  * Version 5 split games from toys: 'game' now requires an objective that can be
  * won or lost, and everything you can merely poke at moved to interactive-3d,
- * where it sits next to the scenes it is actually made of.
+ * where it sits next to the scenes it is actually made of. Version 6 renamed
+ * 'teaching' to 'education' and widened it to cover work built so that someone
+ * learns from it, not only the builder explaining in their own words.
  */
-export const PROMPT_VERSION = 5;
+export const PROMPT_VERSION = 6;
 
 const postTagSchema = {
   type: "object",

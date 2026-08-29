@@ -82,7 +82,7 @@ export default async function CategoriesPage({
           The categories answer one question, &ldquo;what did this post hand over&rdquo;, and are
           applied in a fixed order so that overlap resolves the same way every time: work
           delivered for a client is client work whether or not it is full of 3D, a post explaining
-          a technique is teaching whatever the technique was, and a portfolio is a portfolio
+          a technique is education whatever the technique was, and a portfolio is a portfolio
           however it is rendered. Posts that handed over nothing made are excluded rather than
           given a category of their own. A post may carry a second tag where it genuinely handed
           over two things, in which case it counts in both categories.
@@ -92,6 +92,13 @@ export default async function CategoriesPage({
           win or lose. A scene you can drag, spin or disturb has none, and however satisfying it is
           to poke it belongs with the 3D and generative work it is actually made of. Both are
           interactive; only one can be finished.
+        </p>
+        <p className="mission-line">
+          <strong>Education covers the lesson and the learning product.</strong> A post about
+          how they built a solar system and an interactive solar system built so you learn the
+          planets are the same kind of work: the point of both is that somebody understands
+          something afterwards. Whether the builder does the explaining or the thing they made does
+          it is a difference in delivery, not in purpose.
         </p>
 
         <div className="toggle-stack">

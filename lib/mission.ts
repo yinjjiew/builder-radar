@@ -107,8 +107,9 @@ export const THEME_LABELS: Record<Theme, string> = {
  * finely that eight of them ended up with fewer than five posts each: pairs like
  * component-library and motion-interaction, or dev-tool and creative-tool, were
  * being told apart on a distinction nobody cared about while both were too thin
- * to rank. Seven values with real sample sizes answer more questions than twelve
- * precise ones that each measure noise.
+ * to rank. Values with real sample sizes answer more questions than precise ones
+ * that each measure noise, which is why the set grows only when a kind of work is
+ * genuinely being lost rather than whenever a finer distinction is available.
  *
  * Two properties make the set countable, and both matter more than the names:
  *
@@ -122,7 +123,7 @@ export const THEME_LABELS: Record<Theme, string> = {
  *   is what stops the same post landing in a different bucket every cycle.
  */
 export const PRODUCT_CATEGORIES = [
-  "teaching",
+  "education",
   "client-work",
   "game",
   "utility-tool",
@@ -135,7 +136,7 @@ export const PRODUCT_CATEGORIES = [
 export type ProductCategory = (typeof PRODUCT_CATEGORIES)[number];
 
 export const PRODUCT_CATEGORY_LABELS: Record<ProductCategory, string> = {
-  teaching: "Teaching the craft",
+  education: "Education & learning",
   "client-work": "Client & brand work",
   game: "Games",
   "utility-tool": "Tools that get something done",
@@ -207,10 +208,18 @@ beat later ones even when a later one also seems to apply.
    a joke, industry news, a hiring notice, conference or personal life, praise
    for someone else's work, or an award announcement that does not show the work
    itself. If the only thing being offered is a thought, it is not-work.
-2. teaching — the post exists to explain how something is done: a tutorial, a
-   written breakdown of a technique, a course, a livestream, a talk, or a
-   published lesson. Choose this even when the subject is 3D or a client site,
-   because what is handed over is the explanation rather than the thing.
+2. education — the post exists so that somebody learns something. It takes two
+   shapes and they are one category, because the reason for the work is the same
+   in both. Either the builder does the explaining — a tutorial, a written
+   breakdown of a technique, a course, a livestream, a talk, a published lesson —
+   or they built a thing that does the explaining without them: an interactive
+   explainer, a learning app, a course platform, a study aid, a simulation or
+   visualisation made so a concept becomes clear.
+
+   Choose this even when the subject is 3D or a client site, because a post that
+   exists to teach is teaching whatever it teaches about. It beats everything
+   below, so a game made to teach and an explanatory visualisation are both
+   education: what a thing is for says more than what it is made of.
 3. client-work — made for someone else: a client, a brand, or an employer.
    "New work", "we designed and built X for Y", a case study, a launch with a
    company name, an award for a named brand project. Choose this however the work
@@ -331,7 +340,7 @@ export const AUDIENCE_LABELS: Record<Audience, string> = {
  * where the sentence around them already supplies the verb.
  */
 export const WORK_KIND_LABELS: Record<ProductCategory, string> = {
-  teaching: "teaching",
+  education: "education & learning",
   "client-work": "client work",
   game: "games",
   "utility-tool": "tools",

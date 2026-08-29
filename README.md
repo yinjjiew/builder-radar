@@ -135,6 +135,8 @@ Never put real secret values in GitHub. Copy `.env.example` to `.env.local` for 
 | `OPENAI_API_KEY` | Builder summaries, post tagging, demand brief |
 | `OPENAI_BASE_URL` | Optional; point at any OpenAI-compatible provider |
 | `OPENAI_MODEL` | Analysis model; defaults to `gpt-5-mini` |
+| `SITE_USERNAME` | Username for viewing the site while it is confidential |
+| `SITE_PASSWORD` | Password for viewing the site; share this one |
 | `SITE_URL` | Optional canonical URL for social share images |
 
 ### Using a non-OpenAI provider
@@ -302,6 +304,40 @@ curl -H "Authorization: Bearer YOUR_CRON_SECRET" \
 
 Do not put the real secret in a public screenshot or message.
 
+## The site is password-protected
+
+The whole site sits behind HTTP basic auth while the idea is confidential. There
+are two tiers:
+
+| Credentials | Opens |
+|---|---|
+| `SITE_USERNAME` / `SITE_PASSWORD` | every public page, read-only |
+| `ADMIN_USERNAME` / `ADMIN_PASSWORD` | every public page **and** `/admin` |
+
+Hand out the site pair. Admin credentials also open the public pages, so one
+login covers everything and you are not prompted twice.
+
+**It fails closed.** If neither pair is configured the site returns 503 rather
+than becoming readable, so forgetting an environment variable in Vercel cannot
+quietly publish the project. Admin credentials alone are enough to keep the site
+private, which means adding `SITE_*` later never leaves a window where the site
+is open.
+
+`/api/*` is deliberately outside the gate. Those routes authenticate with a bearer
+token against `CRON_SECRET`, and Vercel's scheduled calls cannot present a
+username and password, so adding basic auth on top would break every cron job.
+Build assets under `/_next/static` are also excluded; they contain no directory
+data and blocking them breaks the first page load.
+
+Pages are served with `X-Robots-Tag: noindex, nofollow` and `Cache-Control:
+no-store`, and the app sets `robots: { index: false }` as well. A crawler cannot
+get past the password anyway, but nothing here should be cached by an intermediary
+or indexed if the gate is ever relaxed.
+
+To change the password, edit the variable in **Vercel -> Project -> Settings ->
+Environment Variables** and redeploy. Browsers cache basic auth credentials for
+the session, so testers may need a new private window after a change.
+
 ## Curate the directory
 
 Visit:
@@ -406,8 +442,13 @@ scales with how much the people you follow actually post.
 - TypeScript passes
 - ESLint passes
 - Dependency audit reports zero known vulnerabilities
-- Cron endpoints reject unauthenticated requests
-- Admin page remains closed until admin credentials are configured
+- Cron endpoints reject unauthenticated requests, and still authenticate by
+  bearer token with the site-wide password gate in place
+- Every page returns 401 without credentials; site credentials open the pages but
+  not `/admin`; admin credentials open both
+- With no credentials configured at all, every route returns 503 rather than 200
+- Wrong password, wrong username, empty pair, malformed base64 and a bearer token
+  in place of basic auth are all rejected
 - Admin basic auth uses constant-time comparison and UTF-8 safe decoding
 - Metrics refresh confirmed against live X data: stored counts moved 9→25 and
   719→752 likes, 21 posts updated in a single batched request

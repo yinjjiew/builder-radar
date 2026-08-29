@@ -19,7 +19,6 @@ import {
   PRODUCT_CATEGORY_RULES,
   ROSTER_THEME,
   THEMES,
-  WORK_KINDS,
   type Artifact,
   type Audience,
   type Intent,
@@ -38,14 +37,19 @@ export type PostTag = {
   note: string;
 };
 
+/**
+ * The rolling read of one builder, plus a tag for each of their recent posts.
+ *
+ * There is deliberately nothing here that the directory card displays. The tags
+ * and the description under a builder's name are the owner's, set by hand and
+ * never overwritten, so this call exists to feed the statistics and the brief.
+ */
 export type CreatorFocus = {
   summary: string;
   products: string[];
   themes: Theme[];
   relevance: number | null;
   opportunity: string;
-  workKinds: ProductCategory[];
-  workSummary: string;
   posts: PostTag[];
 };
 
@@ -73,10 +77,11 @@ export const ANALYSIS_WINDOW = 20;
  * older version are re-tagged, because a leaderboard built from two different
  * prompts would partly be ranking the prompt rather than the posts. Version 2
  * added product_category and the boundary rules that go with it. Version 3
- * replaced that category set outright, so no version 2 tag survives: the values
- * it used no longer exist.
+ * replaced that category set outright. Version 4 merged it down to seven values
+ * and reordered them, which changes real judgements and not only names: a
+ * builder's own utility now files as a tool rather than as their own product.
  */
-export const PROMPT_VERSION = 3;
+export const PROMPT_VERSION = 4;
 
 const postTagSchema = {
   type: "object",
@@ -106,24 +111,13 @@ const postTagSchema = {
 const focusSchema = {
   type: "object",
   additionalProperties: false,
-  required: [
-    "summary",
-    "products",
-    "themes",
-    "relevance",
-    "opportunity",
-    "work_kinds",
-    "work_summary",
-    "posts"
-  ],
+  required: ["summary", "products", "themes", "relevance", "opportunity", "posts"],
   properties: {
     summary: { type: "string" },
     products: { type: "array", items: { type: "string" } },
     themes: { type: "array", items: { type: "string", enum: [...THEMES] } },
     relevance: { type: "integer", minimum: 0, maximum: 100 },
     opportunity: { type: "string" },
-    work_kinds: { type: "array", items: { type: "string", enum: [...WORK_KINDS] } },
-    work_summary: { type: "string" },
     posts: { type: "array", items: postTagSchema }
   }
 } as const;
@@ -163,8 +157,6 @@ Study one builder from that roster and report what they actually make.
 About this builder
 - "summary" is 2 to 4 sentences on their work: what they make, who it is for, and where they are heading. Name concrete things, not adjectives. Do not describe their posting style.
 - "products" lists named products, sites, tools or projects they are visibly working on. Real names only. Empty array if none are named.
-- "work_kinds" lists the kinds of work this builder actually does, most frequent first, at most three. Choose from the same vocabulary as post categories below. Judge it from the evidence in the posts, not from how they describe themselves: a bio saying "design engineer" while every post is a client site means client-site comes first. If the posts do not support a kind, leave it out — a short list you can defend beats a long one.
-- "work_summary" is one or two plain sentences naming the kinds of work they do and who it is for, of the form "Builds immersive sites for luxury brands and publishes the WebGL techniques behind them" or "Ships free interaction libraries other developers install". It is read next to their name by someone deciding whether to follow them, so it must be specific enough to distinguish this builder from the next one. Never restate the bio, and never comment on follower count.
 - "relevance" scores 0-100 how much watching this builder teaches the founder about what people want built on the web and what makes it resonate. Someone shipping visible web work that an ordinary person would want to make scores high. Someone posting mainly company news, industry commentary, or work with no visible result scores low, however large their following.
 - "opportunity" is one or two sentences on what the founder should take from this builder. Concrete, not encouragement.
 
@@ -233,8 +225,6 @@ ${postLines || "(no recent posts available)"}`;
     themes: asEnumList(parsed.themes, THEMES, 6),
     relevance: asScore(parsed.relevance),
     opportunity: asText(parsed.opportunity).slice(0, 600),
-    workKinds: asEnumList(parsed.work_kinds, WORK_KINDS, 3),
-    workSummary: asText(parsed.work_summary).slice(0, 400),
     posts: tags
   };
 }

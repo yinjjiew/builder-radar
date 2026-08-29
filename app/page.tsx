@@ -1,4 +1,5 @@
 import { BuilderCard } from "@/components/builder-card";
+import { TagSlots } from "@/components/tag-slots";
 import { addUpAction } from "@/app/curate/actions";
 import { getBuilders, hasDatabase } from "@/lib/db";
 import { isAdmin } from "@/lib/role";
@@ -33,8 +34,8 @@ export default async function HomePage({
           <div className="nav-links">
             <Link href="/posts" className="nav-link">Post rank</Link>
             <Link href="/categories" className="nav-link">Categories</Link>
-            <Link href="/network" className="nav-link">Network</Link>
             <Link href="/insights" className="nav-link">Insights</Link>
+            {admin ? <Link href="/review" className="nav-link">Review</Link> : null}
           </div>
         </nav>
 
@@ -75,9 +76,10 @@ export default async function HomePage({
             <p className="eyebrow">The directory</p>
             <h2>Builders, ranked by followers</h2>
             <p className="section-note">
-              Followers set the order, not the membership. Each entry says what kinds of work
-              that builder actually does, read from their whole recent output rather than from
-              whichever few things they posted this week.
+              Followers set the order, not the membership. Each entry carries at most two tags
+              naming what that builder focuses on, chosen by hand from the same vocabulary the
+              posts are categorised with. The six-hour update refreshes follower counts and
+              collects posts; it never rewrites a tag or a description.
             </p>
           </div>
           <p className="sync-note">
@@ -106,10 +108,12 @@ export default async function HomePage({
           <div className="curate-inline">
             <h3>Add a builder</h3>
             <p className="section-note">
-              Paste an X handle or profile link. Their posts arrive with the next six-hour update,
-              and the network graph and insights pick them up on the same cycle.
+              Paste an X handle or profile link and say what they build. The tag is required: you
+              have just read their feed, which is the only moment anyone actually knows. The
+              description is optional. Their posts arrive with the next six-hour update, and the
+              insights brief picks them up on the same cycle.
             </p>
-            <form action={addUpAction} className="add-creator-form">
+            <form action={addUpAction} className="add-creator-form add-creator-tagged">
               <label className="sr-only" htmlFor="up-link">
                 X username or profile link
               </label>
@@ -119,6 +123,17 @@ export default async function HomePage({
                 placeholder="@username or x.com/username"
                 autoComplete="off"
                 required
+              />
+              <TagSlots selected={[]} idPrefix="new-builder" />
+              <label className="sr-only" htmlFor="up-note">
+                Description
+              </label>
+              <input
+                id="up-note"
+                name="note"
+                placeholder="What they build, in a sentence (optional)"
+                autoComplete="off"
+                maxLength={400}
               />
               <input type="hidden" name="returnTo" value="/" />
               <button type="submit" className="approve-button">

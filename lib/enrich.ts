@@ -158,20 +158,15 @@ async function loadPosts(creatorId: string): Promise<FocusInput["posts"]> {
 }
 
 /**
- * The kinds of work a builder does, counted from the tags on their own posts.
- * Used only when the model declines to name any; ordered by how often each kind
- * appears so the first one is what they mostly do.
+ * A category, as the array the rankings read.
+ *
+ * 'not-work' becomes an empty list rather than a value, so "handed over nothing"
+ * is expressed by the absence of a tag and no query has to remember to exclude a
+ * magic name. The model answers with one category; the second slot in the array
+ * is the owner's, filled only by hand.
  */
-function dominantKinds(posts: PostTag[]) {
-  const counts = new Map<string, number>();
-  for (const post of posts) {
-    if (post.productCategory === NOT_WORK) continue;
-    counts.set(post.productCategory, (counts.get(post.productCategory) ?? 0) + 1);
-  }
-  return [...counts.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 3)
-    .map(([kind]) => kind);
+function categoriesFor(tag: PostTag) {
+  return tag.productCategory === NOT_WORK ? [] : [tag.productCategory];
 }
 
 async function enrichCreator(candidate: Candidate) {
@@ -193,10 +188,11 @@ async function enrichCreator(candidate: Candidate) {
   for (const tag of focus.posts) {
     await sql`
       insert into post_insights (
-        post_id, themes, artifact, product_category, intent, audience,
+        post_id, themes, artifact, product_category, categories, intent, audience,
         nocode_signal, note, model, prompt_version
       ) values (
         ${tag.id}, ${sql.array(tag.themes)}, ${tag.artifact}, ${tag.productCategory},
+        ${sql.array(categoriesFor(tag))},
         ${tag.intent}, ${tag.audience}, ${tag.nocodeSignal}, ${tag.note},
         ${model}, ${PROMPT_VERSION}
       )
@@ -204,6 +200,13 @@ async function enrichCreator(candidate: Candidate) {
         themes = excluded.themes,
         artifact = excluded.artifact,
         product_category = excluded.product_category,
+        -- A category set by hand is the final word. Everything else on the row is
+        -- still refreshed, because the owner corrected the category, not the
+        -- theme list or the note.
+        categories = case
+          when post_insights.categories_edited then post_insights.categories
+          else excluded.categories
+        end,
         intent = excluded.intent,
         audience = excluded.audience,
         nocode_signal = excluded.nocode_signal,
@@ -214,12 +217,9 @@ async function enrichCreator(candidate: Candidate) {
     `;
   }
 
-  // The model occasionally returns no work kinds for someone whose posts are
-  // plainly all one thing — a feed of untitled generative pieces, for instance.
-  // Its own per-post judgements are already the evidence for the answer, so fall
-  // back to counting them rather than leaving the directory card blank.
-  const workKinds = focus.workKinds.length ? focus.workKinds : dominantKinds(focus.posts);
-
+  // Nothing the directory card shows is written here. A builder's tags and the
+  // sentence under their name are set by hand and stay set; these columns feed
+  // the statistics and the brief, which are the parts meant to move every cycle.
   await sql`
     update creators set
       focus_summary = ${focus.summary},
@@ -227,8 +227,6 @@ async function enrichCreator(candidate: Candidate) {
       focus_themes = ${sql.array(focus.themes)},
       focus_relevance = ${focus.relevance},
       focus_opportunity = ${focus.opportunity},
-      work_kinds = ${sql.array(workKinds)},
-      work_summary = ${focus.workSummary || null},
       focus_latest_post_id = ${candidate.newestPostId},
       focus_updated_at = now()
     where id = ${candidate.id}

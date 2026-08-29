@@ -1,4 +1,11 @@
 import { getDb } from "@/lib/db";
+import {
+  MAX_POST_CATEGORIES,
+  MAX_WORK_KINDS,
+  productCategoryLabel,
+  sanitizeWorkKinds,
+  workKindLabel
+} from "@/lib/mission";
 import { parsePostId } from "@/lib/post-url";
 import { normalizeUsername } from "@/lib/username";
 import { getPostWithAuthor, lookupUsersByUsernames, type XUser } from "@/lib/x";
@@ -37,6 +44,86 @@ export async function blockPost(postId: string): Promise<CurateResult> {
     message: post
       ? `Removed @${post.username}'s post. It will not be collected again.`
       : "Post removed."
+  };
+}
+
+/**
+ * Sets the categories on one post by hand.
+ *
+ * The write marks the row as edited, and that flag is permanent: the enrichment
+ * upsert reads it and leaves the categories alone from then on. Without it a
+ * correction would live for at most six hours, which would make reviewing the
+ * corpus pointless.
+ *
+ * An empty list is a real answer, not a missing one — it is how "this is not
+ * work" is recorded, and it drops the post out of both rankings immediately.
+ */
+export async function setPostCategories(
+  postId: string,
+  raw: string[]
+): Promise<CurateResult> {
+  const categories = sanitizeWorkKinds(raw, MAX_POST_CATEGORIES);
+  const sql = getDb();
+
+  const [post] = await sql<Array<{ username: string }>>`
+    select c.username from posts p join creators c on c.id = p.creator_id where p.id = ${postId}
+  `;
+  if (!post) return { ok: false, message: "That post is no longer in the directory." };
+
+  // A post can be waiting for its first enrichment pass and still need a category
+  // now, so the row is created if it does not exist. product_category stays null:
+  // it holds the model's own answer, and the model has not given one.
+  await sql`
+    insert into post_insights (post_id, product_category, categories, categories_edited, categories_edited_at)
+    values (${postId}, null, ${sql.array(categories)}, true, now())
+    on conflict (post_id) do update set
+      categories = excluded.categories,
+      categories_edited = true,
+      categories_edited_at = now(),
+      updated_at = now()
+  `;
+
+  return {
+    ok: true,
+    message: categories.length
+      ? `@${post.username}'s post is now ${categories.map(productCategoryLabel).join(" + ")}.`
+      : `@${post.username}'s post is marked as not work and has left both rankings.`
+  };
+}
+
+/**
+ * Sets a builder's tags and the sentence under their name.
+ *
+ * Both are the owner's from here on. The six-hour cycle writes neither, so what
+ * is set here is what the directory shows until it is changed by hand — which is
+ * the point: a tag chosen after reading someone's feed is worth more than one
+ * re-derived from twenty posts every cycle.
+ */
+export async function setCreatorTags(
+  creatorId: string,
+  rawKinds: string[],
+  note: string | null
+): Promise<CurateResult> {
+  const kinds = sanitizeWorkKinds(rawKinds, MAX_WORK_KINDS);
+  if (!kinds.length) {
+    return { ok: false, message: "Choose at least one kind of work for this builder." };
+  }
+
+  const sql = getDb();
+  const trimmed = (note ?? "").trim().slice(0, 400);
+  const [creator] = await sql<Array<{ username: string }>>`
+    update creators set
+      work_kinds = ${sql.array(kinds)},
+      work_summary = ${trimmed || null},
+      updated_at = now()
+    where id = ${creatorId}
+    returning username
+  `;
+
+  if (!creator) return { ok: false, message: "That builder is no longer in the directory." };
+  return {
+    ok: true,
+    message: `@${creator.username} is now tagged ${kinds.map(workKindLabel).join(" + ")}.`
   };
 }
 
@@ -180,13 +267,29 @@ export async function getBlockedPosts(): Promise<BlockedPost[]> {
 /**
  * Adds a builder to the ranked roster by handle or profile link.
  *
+ * Tags are required, and that is deliberate rather than a validation habit. The
+ * whole roster was assembled by reading feeds and deciding whether someone
+ * belongs; whoever just made that decision knows what the person builds, and
+ * asking then costs nothing. Deferring it to a model produced the tags that had
+ * to be thrown away. The description is optional because a good one takes longer
+ * to write than a tag takes to choose.
+ *
  * A removed builder is not revived here. "Removed" is meant to be permanent, and
  * the one place that can undo it is the removed list in /admin, where the choice
  * is explicit rather than a side effect of pasting a link.
  */
-export async function addUpByLink(raw: string): Promise<CurateResult> {
+export async function addUpByLink(
+  raw: string,
+  rawKinds: string[],
+  note: string | null
+): Promise<CurateResult> {
   const username = normalizeUsername(raw);
   if (!username) return { ok: false, message: "Enter a valid X username or profile link." };
+
+  const kinds = sanitizeWorkKinds(rawKinds, MAX_WORK_KINDS);
+  if (!kinds.length) {
+    return { ok: false, message: `Choose what @${username} builds before adding them.` };
+  }
 
   const sql = getDb();
   const [existing] = await sql<Array<{ status: string }>>`
@@ -210,30 +313,36 @@ export async function addUpByLink(raw: string): Promise<CurateResult> {
     profile = undefined;
   }
 
+  const trimmed = (note ?? "").trim().slice(0, 400);
+
   await sql`
     insert into creators (
       x_user_id, username, name, description, profile_image_url,
-      followers_count, verified, status, added_by_hand
+      followers_count, verified, status, added_by_hand, work_kinds, work_summary
     ) values (
       ${profile?.id ?? null}, ${profile?.username ?? username},
       ${profile?.name ?? username}, ${profile?.description ?? ""},
       ${profile?.profile_image_url ?? null},
       ${profile?.public_metrics?.followers_count ?? null},
-      ${profile?.verified ?? false}, 'approved', true
+      ${profile?.verified ?? false}, 'approved', true,
+      ${sql.array(kinds)}, ${trimmed || null}
     )
     on conflict (username) do update set
       status = 'approved',
       added_by_hand = true,
       x_user_id = coalesce(excluded.x_user_id, creators.x_user_id),
       followers_count = coalesce(excluded.followers_count, creators.followers_count),
+      work_kinds = excluded.work_kinds,
+      work_summary = coalesce(excluded.work_summary, creators.work_summary),
       updated_at = now()
   `;
 
+  const tagLine = kinds.map(workKindLabel).join(" + ");
   return {
     ok: true,
     message: profile
-      ? `@${username} added. Their posts arrive with the next update.`
-      : `@${username} added. Details fill in on the next update.`
+      ? `@${username} added as ${tagLine}. Their posts arrive with the next update.`
+      : `@${username} added as ${tagLine}. Profile details fill in on the next update.`
   };
 }
 

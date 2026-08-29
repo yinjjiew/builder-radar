@@ -62,16 +62,18 @@ export default async function CategoriesPage({
         <p className="eyebrow">Work categories</p>
         <h1>Which kinds of work actually earn attention.</h1>
         <p className="mission-line">
-          Every post that handed over something made is classified into exactly one kind of work.
+          Every post that handed over something made is filed under one of seven kinds of work.
           The question this answers is which kinds an audience rewards — and therefore which kinds
           an ordinary person would get the most out of being able to make.
         </p>
         <p className="mission-line">
           The categories answer one question, &ldquo;what did this post hand over&rdquo;, and are
-          applied in a fixed order so that overlap resolves the same way every cycle: work
-          delivered for a client is client work whether or not it is full of 3D, and a post
-          explaining a technique is teaching whatever the technique was. Posts that handed over
-          nothing made are excluded rather than given a category of their own.
+          applied in a fixed order so that overlap resolves the same way every time: work
+          delivered for a client is client work whether or not it is full of 3D, a post explaining
+          a technique is teaching whatever the technique was, and a portfolio is a portfolio
+          however it is rendered. Posts that handed over nothing made are excluded rather than
+          given a category of their own. A post may carry a second tag where it genuinely handed
+          over two things, in which case it counts in both categories.
         </p>
 
         <div className="metric-toggle" role="group" aria-label="Time range">
@@ -104,7 +106,7 @@ export default async function CategoriesPage({
           </div>
           <div>
             <strong>{categories.reduce((sum, row) => sum + row.posts, 0)}</strong>
-            <span>work posts</span>
+            <span>tags applied</span>
           </div>
           <div>
             <strong>{solid.length}</strong>
@@ -164,7 +166,7 @@ export default async function CategoriesPage({
                 <th scope="col">Avg likes</th>
                 <th scope="col">Median likes</th>
                 <th scope="col">Breakout</th>
-                <th scope="col">Share</th>
+                <th scope="col">Share of tags</th>
                 <th scope="col">n</th>
               </tr>
             </thead>
@@ -266,9 +268,16 @@ export default async function CategoriesPage({
                     </span>
                   </div>
                   <p>{post.note ?? cleanPostText(post.text).slice(0, 180)}</p>
-                  <a href={post.url} target="_blank" rel="noreferrer" className="rank-link">
-                    Open post
-                  </a>
+                  <div className="example-foot">
+                    {post.categories.map((category) => (
+                      <span className="tag" key={category}>
+                        {productCategoryLabel(category)}
+                      </span>
+                    ))}
+                    <a href={post.url} target="_blank" rel="noreferrer" className="rank-link">
+                      Open post
+                    </a>
+                  </div>
                 </li>
               ))}
             </ul>
@@ -281,9 +290,16 @@ export default async function CategoriesPage({
       <footer className="insights-footer">
         <p className="footnote">
           Categories are assigned by the model from a fixed vocabulary with written boundary rules,
-          so the same kind of product lands in the same category each cycle. Changing those rules
-          re-tags the whole corpus rather than mixing two standards, because a leaderboard built
-          from two different definitions would partly be ranking the definition.
+          applied in order, so the same kind of work lands in the same category every time.
+          Changing those rules re-tags the whole corpus rather than mixing two standards, because a
+          leaderboard built from two different definitions would partly be ranking the definition.
+        </p>
+        <p className="footnote">
+          Any tag can be corrected by hand on the review page, and a hand-set tag is permanent: the
+          six-hour cycle re-reads posts but never overwrites a category a person chose. Both this
+          ranking and the post rank are computed on every page load, so a correction shows up
+          immediately; the written brief on <Link href="/insights">/insights</Link> is rewritten on
+          the next cycle rather than on the spot.
         </p>
       </footer>
     </main>

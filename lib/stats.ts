@@ -1,5 +1,5 @@
 import { getDb, hasDatabase } from "@/lib/db";
-import { NOT_WORK, PRODUCT_CATEGORIES } from "@/lib/mission";
+import { WORK_KINDS } from "@/lib/mission";
 
 /**
  * Why the numbers are shaped this way.
@@ -41,20 +41,20 @@ const CORPUS_STATUSES = ["approved", "guest"];
 /**
  * A ranking of posts is meant to answer "what work resonated", so a post that
  * handed over no work does not belong in it however many likes it drew. Both
- * rankings therefore require a category, which also excludes posts not yet
- * tagged: an untagged post is not known to be work, and admitting it on the
- * chance that it might be is what filled the earlier ranking with takes, replies
- * and conference photos.
+ * rankings therefore require at least one category, which also excludes posts
+ * not yet tagged: an untagged post is not known to be work, and admitting it on
+ * the chance that it might be is what filled the earlier ranking with takes,
+ * replies and conference photos.
+ *
+ * An empty category list is exactly what "not work" means, so there is no magic
+ * value to remember to exclude here.
  *
  * The one exception is a post the owner added by hand. That is an explicit
  * judgement that it belongs, and it should not have to wait for the next
  * enrichment cycle to appear.
  */
 function workPostsOnly(sql: ReturnType<typeof getDb>) {
-  return sql`(
-    p.added_by_hand
-    or (pi.product_category is not null and pi.product_category <> ${NOT_WORK})
-  )`;
+  return sql`(p.added_by_hand or coalesce(array_length(pi.categories, 1), 0) > 0)`;
 }
 
 /**
@@ -116,7 +116,8 @@ export type BreakoutRow = {
   note: string | null;
   themes: string[];
   artifact: string | null;
-  productCategory: string | null;
+  /** Up to two work categories. Empty means the post handed over nothing made. */
+  categories: string[];
   mature: boolean;
   nocodeSignal: number | null;
   addedByHand: boolean;
@@ -366,7 +367,7 @@ export async function getBreakoutPosts(limit = 12): Promise<BreakoutRow[]> {
       s.id, s.username, s.text, s.url, s.created_at,
       s.like_count, s.repost_count, s.followers_count,
       s.engagement, s.breakout,
-      pi.note, pi.themes, pi.artifact, pi.nocode_signal
+      pi.note, pi.themes, pi.artifact, pi.categories, pi.nocode_signal
     from scored s
     left join post_insights pi on pi.post_id = s.id
     where s.mature and s.breakout is not null
@@ -385,7 +386,7 @@ export async function getTopEngagementPosts(limit = 12): Promise<BreakoutRow[]> 
       s.id, s.username, s.text, s.url, s.created_at,
       s.like_count, s.repost_count, s.followers_count,
       s.engagement, s.breakout,
-      pi.note, pi.themes, pi.artifact, pi.nocode_signal
+      pi.note, pi.themes, pi.artifact, pi.categories, pi.nocode_signal
     from scored s
     left join post_insights pi on pi.post_id = s.id
     where s.mature and s.engagement is not null
@@ -410,7 +411,7 @@ function toBreakoutRow(row: Record<string, unknown>): BreakoutRow {
     note: row.note ? String(row.note) : null,
     themes: Array.isArray(row.themes) ? (row.themes as string[]) : [],
     artifact: row.artifact ? String(row.artifact) : null,
-    productCategory: row.product_category ? String(row.product_category) : null,
+    categories: Array.isArray(row.categories) ? (row.categories as string[]) : [],
     mature: row.mature === undefined ? true : Boolean(row.mature),
     nocodeSignal: maybeNum(row.nocode_signal),
     addedByHand: Boolean(row.added_by_hand)
@@ -447,7 +448,7 @@ export async function getTopPosts(
       s.like_count, s.repost_count, s.followers_count,
       s.engagement, s.breakout, s.mature,
       p.added_by_hand,
-      pi.note, pi.themes, pi.artifact, pi.product_category, pi.nocode_signal
+      pi.note, pi.themes, pi.artifact, pi.categories, pi.nocode_signal
     from scored s
     join posts p on p.id = s.id
     left join post_insights pi on pi.post_id = s.id
@@ -480,7 +481,7 @@ export async function getCategoryStats(window: RankWindow = "all"): Promise<Cate
   const rows = await sql<Array<Record<string, unknown>>>`
     ${scoredPosts(sql, window)}
     select
-      pi.product_category as key,
+      cat as key,
       count(*) as posts,
       count(distinct s.creator_id) as creators,
       avg(s.like_count)::float8 as avg_likes,
@@ -495,12 +496,17 @@ export async function getCategoryStats(window: RankWindow = "all"): Promise<Cate
       avg(pi.nocode_signal)::float8 as avg_nocode_signal
     from scored s
     join post_insights pi on pi.post_id = s.id
+    -- A post with two categories is counted under both. That is the honest
+    -- reading of "which kinds of work resonate": the post is evidence for each
+    -- kind it handed over. It does mean the shares below sum to slightly more
+    -- than one, which is why they are described as a share of tags rather than of
+    -- posts.
+    cross join lateral unnest(pi.categories) as cat
     where s.mature and s.engagement is not null
-      -- A stale value from a superseded prompt version must not be ranked
-      -- alongside current ones, so the category must still be in the vocabulary.
-      and pi.product_category <> ${NOT_WORK}
-      and pi.product_category = any(${[...PRODUCT_CATEGORIES]})
-    group by pi.product_category
+      -- A stale value from a superseded vocabulary must not be ranked alongside
+      -- current ones, so the category must still be in the vocabulary.
+      and cat = any(${[...WORK_KINDS]})
+    group by cat
     order by avg_engagement desc nulls last, posts desc
   `;
 
@@ -514,24 +520,23 @@ export async function getCategoryStats(window: RankWindow = "all"): Promise<Cate
         s.id, s.username, s.text, s.url, s.created_at,
         s.like_count, s.repost_count, s.followers_count,
         s.engagement, s.breakout, s.mature,
-        pi.note, pi.themes, pi.artifact, pi.product_category, pi.nocode_signal,
-        row_number() over (
-          partition by pi.product_category order by s.engagement desc
-        ) as rank
+        pi.note, pi.themes, pi.artifact, pi.categories, pi.nocode_signal,
+        cat as category_key,
+        row_number() over (partition by cat order by s.engagement desc) as rank
       from scored s
       join post_insights pi on pi.post_id = s.id
+      cross join lateral unnest(pi.categories) as cat
       where s.mature and s.engagement is not null
-      -- A stale value from a superseded prompt version must not be ranked
-      -- alongside current ones, so the category must still be in the vocabulary.
-      and pi.product_category <> ${NOT_WORK}
-      and pi.product_category = any(${[...PRODUCT_CATEGORIES]})
+      -- A stale value from a superseded vocabulary must not be ranked alongside
+      -- current ones, so the category must still be in the vocabulary.
+      and cat = any(${[...WORK_KINDS]})
     )
     select * from ranked where rank <= 3
   `;
 
   const examples = new Map<string, BreakoutRow[]>();
   for (const row of exampleRows) {
-    const key = String(row.product_category);
+    const key = String(row.category_key);
     const list = examples.get(key) ?? [];
     list.push(toBreakoutRow(row));
     examples.set(key, list);

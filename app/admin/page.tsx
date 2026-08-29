@@ -1,7 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
-import { getDiscoveryCandidates, getManagedCreators, hasDatabase } from "@/lib/db";
-import { addCreator, reviewCandidate, setCreatorStatus } from "@/app/admin/actions";
+import { getManagedCreators, hasDatabase } from "@/lib/db";
+import { setCreatorStatus } from "@/app/admin/actions";
 import { ConfirmButton } from "@/components/confirm-button";
 import { restoreUpAction, unblockPostAction } from "@/app/curate/actions";
 import { getBlockedPosts } from "@/lib/curate";
@@ -40,9 +40,8 @@ export default async function AdminPage({
     );
   }
 
-  const [allCreators, candidates, blockedPosts] = await Promise.all([
+  const [allCreators, blockedPosts] = await Promise.all([
     getManagedCreators(),
-    getDiscoveryCandidates(),
     getBlockedPosts()
   ]);
 
@@ -66,23 +65,9 @@ export default async function AdminPage({
       <section className="admin-section">
         <h2>Add a builder</h2>
         <p className="section-note">
-          Paste an X username or profile URL. Their posts appear after the next sync.
+          Adding happens on the <Link href="/">directory</Link>, because that form asks for the
+          tags a builder is required to have and this one did not.
         </p>
-        <form action={addCreator} className="add-creator-form">
-          <label className="sr-only" htmlFor="username">
-            X username
-          </label>
-          <input
-            id="username"
-            name="username"
-            placeholder="@username or x.com/username"
-            autoComplete="off"
-            required
-          />
-          <button type="submit" className="approve-button">
-            Add builder
-          </button>
-        </form>
       </section>
 
       <section className="admin-section">
@@ -140,7 +125,7 @@ export default async function AdminPage({
                     <input type="hidden" name="status" value="removed" />
                     <ConfirmButton
                       className="reject-button"
-                      message={`Remove @${creator.username} from the directory permanently?\n\nThey will drop out of the ranking and the network, and the six-hour update will not add them back — including if they are on the seed list.\n\nYou can undo this from the removed list below.`}
+                      message={`Remove @${creator.username} from the directory permanently?\n\nThey will drop out of the ranking and the six-hour update will not add them back — including if they are on the seed list.\n\nYou can undo this from the removed list below.`}
                     >
                       Remove
                     </ConfirmButton>
@@ -235,70 +220,6 @@ export default async function AdminPage({
         )}
       </section>
 
-      <section className="admin-section">
-        <h2>Discovered candidates</h2>
-        {candidates.length === 0 ? (
-          <p className="section-note">
-            Automatic discovery is not on a schedule, because reading full following lists
-            is billed per account and costs far more than the post sync. Run
-            <code>/api/cron/check-following</code> by hand if you want a discovery pass.
-          </p>
-        ) : (
-          <div className="candidate-list">
-            {candidates.map((candidate) => (
-              <article className="candidate-card" key={candidate.id}>
-                <div className="candidate-person">
-                  {candidate.profileImageUrl ? (
-                    <Image
-                      src={candidate.profileImageUrl}
-                      alt=""
-                      width={52}
-                      height={52}
-                      className="avatar"
-                    />
-                  ) : (
-                    <div className="avatar avatar-fallback">{candidate.name[0]}</div>
-                  )}
-                  <div>
-                    <h3>{candidate.name}</h3>
-                    <a
-                      href={`https://x.com/${candidate.username}`}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      @{candidate.username}
-                    </a>
-                  </div>
-                </div>
-                <p>{candidate.description || "No bio provided."}</p>
-                <div className="candidate-meta">
-                  <span>{candidate.followersCount.toLocaleString()} followers</span>
-                  <span>
-                    Score {candidate.relevanceScore === null ? "pending" : candidate.relevanceScore}
-                  </span>
-                  <span>
-                    Found via {candidate.discoveredBy.map((name) => `@${name}`).join(", ")}
-                  </span>
-                </div>
-                <p className="assessment">{candidate.relevanceReason}</p>
-                {candidate.status === "pending" ? (
-                  <form action={reviewCandidate} className="review-actions">
-                    <input type="hidden" name="id" value={candidate.id} />
-                    <button name="decision" value="approved" className="approve-button">
-                      Approve
-                    </button>
-                    <button name="decision" value="rejected" className="reject-button">
-                      Reject
-                    </button>
-                  </form>
-                ) : (
-                  <div className={`decision decision-${candidate.status}`}>{candidate.status}</div>
-                )}
-              </article>
-            ))}
-          </div>
-        )}
-      </section>
     </main>
   );
 }

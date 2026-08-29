@@ -86,10 +86,23 @@ export default async function PostRankPage({
           decides whether you are asking what works or what is working now.
         </p>
         <p className="mission-line">
-          Only posts that handed over something made are ranked here. A post has to be classified
-          as one of the {"kinds of work"} on the category page to qualify, which keeps out takes,
-          questions, award announcements and industry news however well they performed.
+          Only posts that handed over something made are ranked here, and each one carries the tag
+          it was filed under. A post needs at least one of the{" "}
+          <Link href="/categories" className="hero-inline-link">
+            seven kinds of work
+          </Link>{" "}
+          to qualify, which keeps out takes, questions, award announcements and industry news
+          however well they performed.
         </p>
+        {admin ? (
+          <p className="mission-line">
+            A tag that looks wrong can be changed on the{" "}
+            <Link href="/review" className="hero-inline-link">
+              review page
+            </Link>
+            , and this ranking reflects the change on your next page load.
+          </p>
+        ) : null}
 
         <div className="toggle-stack">
           <div className="metric-toggle" role="group" aria-label="Ranking metric">
@@ -198,9 +211,15 @@ export default async function PostRankPage({
                   <p className="rank-text">{cleanPostText(post.text).slice(0, 260)}</p>
 
                   <div className="rank-meta">
-                    {post.productCategory ? (
-                      <span className="tag">{productCategoryLabel(post.productCategory)}</span>
-                    ) : null}
+                    {post.categories.length ? (
+                      post.categories.map((category) => (
+                        <span className="tag" key={category}>
+                          {productCategoryLabel(category)}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="tag tag-muted">untagged</span>
+                    )}
                     {post.breakout === null ? null : (
                       <span className="rank-chip">{post.breakout.toFixed(1)}× their median</span>
                     )}

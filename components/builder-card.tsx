@@ -1,6 +1,7 @@
 import Image from "next/image";
 import { ConfirmButton } from "@/components/confirm-button";
-import { removeUpAction } from "@/app/curate/actions";
+import { TagSlots } from "@/components/tag-slots";
+import { removeUpAction, setCreatorTagsAction } from "@/app/curate/actions";
 import type { Builder } from "@/lib/types";
 import { compactNumber, relativeDate } from "@/lib/format";
 import { workKindLabel } from "@/lib/mission";
@@ -66,7 +67,7 @@ export function BuilderCard({
                 <input type="hidden" name="returnTo" value="/" />
                 <ConfirmButton
                   className="danger-link"
-                  message={`Remove @${builder.username} from the directory permanently?\n\nThey will drop out of the ranking and the network, and the six-hour update will not add them back.\n\nTheir collected posts stop counting towards the statistics.`}
+                  message={`Remove @${builder.username} from the directory permanently?\n\nThey will drop out of the ranking and the six-hour update will not add them back.\n\nTheir collected posts stop counting towards the statistics.`}
                 >
                   Remove
                 </ConfirmButton>
@@ -75,67 +76,59 @@ export function BuilderCard({
           </div>
         </header>
 
+        {builder.workKinds.length ? (
+          <p className="work-kinds">
+            {builder.workKinds.map((kind) => (
+              <span className="work-kind" key={kind}>
+                {workKindLabel(kind)}
+              </span>
+            ))}
+          </p>
+        ) : (
+          <p className="work-kinds">
+            <span className="work-kind work-kind-empty">untagged</span>
+          </p>
+        )}
+
+        {builder.workSummary ? <p className="work-summary">{builder.workSummary}</p> : null}
+
         <p className="bio">{builder.description || "No biography available."}</p>
 
-        <div className="work-block">
-          <div className="posts-heading">
-            <span>What kinds of work they do</span>
-            {builder.lastSyncedAt ? (
-              <span>Updated {relativeDate(builder.lastSyncedAt)} ago</span>
-            ) : null}
-          </div>
-
-          {builder.workKinds.length ? (
-            <p className="work-kinds">
-              {builder.workKinds.map((kind) => (
-                <span className="work-kind" key={kind}>
-                  {workKindLabel(kind)}
-                </span>
-              ))}
-            </p>
-          ) : null}
-
-          {builder.workSummary ? (
-            <p className="work-summary">{builder.workSummary}</p>
+        <p className="work-activity">
+          {builder.postCount ? (
+            <>
+              {builder.postCount} post{builder.postCount === 1 ? "" : "s"} tracked
+              {builder.latestPostAt ? ` · latest ${relativeDate(builder.latestPostAt)} ago` : ""}
+            </>
           ) : (
-            <div className="posts-placeholder">
-              A read of their work appears after the next enrichment run.
-            </div>
+            "No posts collected yet."
           )}
+        </p>
 
-          <p className="work-activity">
-            {builder.postCount ? (
-              <>
-                {builder.postCount} post{builder.postCount === 1 ? "" : "s"} tracked
-                {builder.latestPostAt ? ` · latest ${relativeDate(builder.latestPostAt)} ago` : ""}
-              </>
-            ) : (
-              "No posts collected yet."
-            )}
-          </p>
-        </div>
-        {builder.focusSummary ? (
-          <div className="builder-focus">
-            <p className="builder-focus-head">
-              <span>What they are working on right now</span>
-              {builder.focusRelevance !== null ? (
-                <span className="relevance-chip">{builder.focusRelevance}/100 relevance</span>
-              ) : null}
-            </p>
-            <p>{builder.focusSummary}</p>
-            {builder.focusProducts.length ? (
-              <p className="focus-products">
-                <span>Products</span>
-                {builder.focusProducts.map((product) => (
-                  <span className="tag" key={product}>
-                    {product}
-                  </span>
-                ))}
-              </p>
-            ) : null}
-          </div>
+        {admin ? (
+          <details className="tag-editor">
+            <summary>Edit tags</summary>
+            <form action={setCreatorTagsAction} className="tag-form">
+              <input type="hidden" name="creatorId" value={builder.id} />
+              <input type="hidden" name="returnTo" value="/" />
+              <TagSlots selected={builder.workKinds} idPrefix={`builder-${builder.id}`} />
+              <label className="tag-note-label" htmlFor={`note-${builder.id}`}>
+                Description (optional)
+              </label>
+              <textarea
+                id={`note-${builder.id}`}
+                name="note"
+                rows={2}
+                maxLength={400}
+                defaultValue={builder.workSummary ?? ""}
+                placeholder="What they build, in a sentence. Left blank, the card shows only the tags."
+              />
+              <button type="submit" className="approve-button">
+                Save tags
+              </button>
+            </form>
+          </details>
         ) : null}
-
       </div>
     </article>
   );

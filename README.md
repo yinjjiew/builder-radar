@@ -1,14 +1,15 @@
 # Builder Radar
 
-A public, ranked directory of thirty people who build in public — design engineers,
-creative developers, AI and no-code tool builders, and solo shippers — with a
-demand analysis built on what their audiences actually reward.
+A private, ranked directory of sixty people who build for the web — creative and
+interactive developers, studios, design engineers, and the people who make the
+tools they build with — with a demand analysis built on what their audiences
+actually reward.
 
 The project is ready for GitHub and Vercel. It uses:
 
 - Next.js and TypeScript for the website and backend
 - PostgreSQL (Supabase or Neon) for creators, posts, AI tags, and analysis
-- X API v2 for public profiles, follower counts, posts, and following lists
+- X API v2 for public profiles, follower counts, and posts
 - An OpenAI-compatible model for summaries and demand analysis
 - Vercel Cron for automatic updates
 
@@ -19,8 +20,8 @@ The project is ready for GitHub and Vercel. It uses:
 | `/` | Who is in the directory, ranked by followers |
 | `/posts` | The 30 strongest **work** posts, by raw likes or by likes per 1,000 followers, over all history or the last 14 days |
 | `/categories` | Which kinds of work earn attention, with the best examples, over all history or the last 14 days |
-| `/network` | Who the directory follows, and who to add next |
 | `/insights` | The demand brief and the statistics behind it, with 8 saved versions |
+| `/review` | Every collected post with the category it was filed under, editable in place (admin only) |
 
 ## Product behavior
 
@@ -29,19 +30,20 @@ The project is ready for GitHub and Vercel. It uses:
   `creators.bucket`.
 - Creators are ranked by current X follower count, but follower count does not
   decide membership — see [Why this roster](#why-this-roster).
-- Each card states **what kinds of work that builder does**, read from their whole
-  recent output. It no longer quotes their latest posts: three arbitrary posts
-  from one week is a bad basis for judging what someone makes.
+- Each card carries **at most two tags** naming what that builder focuses on, plus
+  an optional sentence. Both are set by hand and the six-hour cycle never
+  overwrites them; see [Whose tags these are](#whose-tags-these-are).
 - Only posts that handed over something made are ranked; see
   [What counts as work](#what-counts-as-work).
+- Every tag on every post can be corrected on `/review`, and a correction shows up
+  in both rankings on the next page load.
 - Posts and like counts update every six hours. Follower counts refresh daily —
   see [X API cost](#x-api-cost) for why that split exists.
-- Builders are curated by hand from `/` or `/admin`: add by handle or link, pause, or remove.
+- Builders are added from `/`, where choosing their tags is required; pause and
+  remove live on `/admin`.
 - Individual posts are curated from `/posts`: add by link, or delete permanently.
 - Paused and removed builders stay that way; seeding never resurrects them.
 - Both rank pages report two ranges: all history, and the last 14 days.
-- The follow graph is a **manual, budgeted pass**, not a cron job, because it is
-  the one genuinely expensive call here.
 
 ### Why this roster
 
@@ -87,7 +89,7 @@ being added.
 
 The post and category rankings answer "what work resonated", so a post that
 handed over nothing does not enter them however many likes it drew. A post
-qualifies only once it has been classified as one of the eleven kinds of work; an
+qualifies only once it has been filed under one of the seven kinds of work; an
 untagged post is not *known* to be work, and admitting it on the chance that it
 might be is what previously filled the ranking with takes, replies and conference
 photos. About a third of the corpus classifies as `not-work`.
@@ -98,34 +100,91 @@ judgement that it belongs.
 
 ### The category set
 
-`PRODUCT_CATEGORIES` in `lib/mission.ts` replaced an earlier set that could not be
-counted: it had `utility-tool`, `web-app`, `dev-tool` and `api-service` as
-separate values with no boundary between them, no value at all for the most
-common kind of work on this roster — a site built for a client — and a catch-all
-`creative-visual` that swallowed a third of the corpus.
+`PRODUCT_CATEGORIES` in `lib/mission.ts` is the third attempt and the first to
+survive being read against the corpus.
 
-Two properties make the replacement countable, and both matter more than the
-names:
+The first set could not be counted at all: `utility-tool`, `web-app`, `dev-tool`
+and `api-service` sat side by side with no boundary between them, there was no
+value for the most common kind of work on this roster — a site built for a client
+— and a catch-all `creative-visual` swallowed a third of everything.
+
+The second fixed the boundaries but kept twelve values, which split 580 posts so
+finely that eight categories held fewer than five posts each. `component-library`
+and `motion-interaction` were being told apart on whether a UI piece was shown
+still or moving; `dev-tool` and `creative-tool` on whether the user writes code.
+Both distinctions are real and neither was worth a category, because both sides
+ended up too thin to rank. **Seven values with real sample sizes answer more
+questions than twelve precise ones that each measure noise.**
+
+The set, in precedence order:
+
+| Category | What it means |
+|---|---|
+| `teaching` | The thing handed over is the explanation: tutorial, breakdown, course, stream, talk |
+| `client-work` | Made for a client, brand or employer, however it was built |
+| `game` | Something playable, made to be played |
+| `utility-tool` | Exists to get something done: utility, editor, generator, dashboard, or a library that does that job for people who write code |
+| `own-product` | The author's own presence or property: portfolio, studio site, personal site, their own launch |
+| `interface-craft` | The artifact is a piece of interface — a reusable component, a design system, a transition, a hover or scroll behaviour. The still thing and its behaviour are the same kind of work |
+| `interactive-3d` | The artifact is a scene or visual, shown for what it looks like: 3D, shaders, simulations, generative and audiovisual pieces |
+| `not-work` | Handed over nothing made. Stored as an empty tag list, not as a value |
+
+Two properties make the set countable, and both matter more than the names:
 
 - **Every value answers the same question:** what did this post hand over? Never
   who it was for, how it was made, or how finished it is.
 - **The set is ordered and the first match wins.** Overlap is unavoidable — a
-  client site can be full of 3D, a tutorial can be about a shader — so ambiguity
+  client site can be full of 3D, a portfolio can be a shader demo — so ambiguity
   is resolved by precedence rather than by the model's mood, which is what stops
   the same post landing in a different bucket every cycle. Work delivered for a
-  client is `client-site` whether or not it is 3D; a post explaining a technique
-  is `teaching` whatever the technique was.
+  client is `client-work` whether or not it is 3D; a post explaining a technique
+  is `teaching` whatever the technique was; a portfolio is `own-product` however
+  it is rendered.
 
-The same vocabulary describes people. `creators.work_kinds` holds the kinds a
-builder actually produces, so a builder's stated output and the ranking of what
-resonates can be read against each other directly.
+Two of the boundaries are worth stating outright, because they are the ones a
+reader will test:
+
+- **A tool the author owns is a tool, not their product.** `utility-tool` beats
+  `own-product` deliberately: what a thing is matters more than who owns it, so an
+  indie utility files with the other utilities where it can be compared.
+  `own-product` is for a portfolio, a studio site, a personal site — the author's
+  own presence rather than something they made for you to use.
+- **A UI component and the way it moves are one category.** `interface-craft`
+  covers both, and beats `interactive-3d` whenever what is shown is part of an
+  interface, even if it is rendered with WebGL.
+
+**A post may carry two tags, and almost never should.** The model is only ever
+asked for one; the second slot exists for the owner, who is the one person able to
+tell a genuine double — a tutorial that ships the toy it teaches, a client site
+released as a library — from a hedge between two candidates. A post with two tags
+counts in both categories, which is why the shares on `/categories` are described
+as a share of tags rather than of posts.
+
+The same vocabulary describes people, so a builder's stated output and the ranking
+of what resonates can be read against each other directly.
+
+### Whose tags these are
+
+`creators.work_kinds` and `creators.work_summary` are the owner's, written only by
+hand. `post_insights.categories` starts as the model's and becomes the owner's the
+moment it is edited: `categories_edited` is set, and the enrichment upsert reads
+that flag and leaves the list alone from then on, while still refreshing
+everything else on the row.
+
+That asymmetry is the point of both. The roster was assembled by reading feeds and
+deciding who belongs, and whoever just made that decision knows what the person
+builds — which is why adding a builder requires choosing their tags and why the
+cycle cannot revise them. Post categories are worth having a model do, because
+there are hundreds and they change weekly, but a review that got undone six hours
+later would not be worth doing at all.
 
 ## Demand analysis at `/insights`
 
 Every six hours a model reads each builder's recent posts and answers two
 questions: what is this person actually building, and what does that imply for
-the goal in `lib/mission.ts`. The results appear as a summary on each directory
-card and in full on `/insights`.
+the goal in `lib/mission.ts`. That read feeds the statistics and the brief on
+`/insights`. It deliberately does not reach the directory card, because anything
+shown there has to survive the next cycle unchanged.
 
 Each post is also tagged against a closed vocabulary — theme, artifact type, kind
 of work, intent, target audience, and a 0-100 score for how strongly it suggests
@@ -141,9 +200,27 @@ individual tags would make the aggregate numbers worse.
 
 `PRODUCT_CATEGORY_RULES` in `lib/mission.ts` hands the model an ordered decision
 procedure rather than a list of definitions — see [The category
-set](#the-category-set) for why that distinction is the whole point. Version 3 of
-the prompt replaced the vocabulary outright, so no version 2 tag survives: the
-values it used no longer exist.
+set](#the-category-set) for why that distinction is the whole point. Version 3
+replaced the vocabulary outright. Version 4 merged it to seven values and
+reordered them, which changes real judgements and not only names: a builder's own
+utility now files as a tool rather than as their own product.
+
+A vocabulary change is applied in two steps rather than one. The old values are
+first remapped in SQL, because every one of them maps onto exactly one new value,
+so the site is never showing labels it can no longer explain. The prompt version
+is then bumped and the corpus re-tagged, which is what applies the parts of the
+change that are judgements rather than renames.
+
+The scheduled route can only re-tag part of the roster per run, since a
+serverless function is killed at five minutes, so a bumped version would take
+several cycles to work through — during which the rankings would be counting two
+definitions at once. Run it from a terminal instead, where there is no limit:
+
+```bash
+npx tsx scripts/retag.mts
+```
+
+Hand-set categories are skipped, so this is safe to run after a review pass.
 
 **Editing the goal.** `MISSION` in `lib/mission.ts` is the single place that aims
 the whole pipeline. Change it and the next enrichment run re-scores everything
@@ -359,7 +436,7 @@ run per day, and any more frequent expression fails at deploy time with
 daily times such as `0 5 * * *`, `10 5 * * *`, `35 5 * * *`, or point an external
 scheduler at the routes.
 
-After deployment, the first post cron populates the fifty seeded profiles and their posts.
+After deployment, the first post cron populates the sixty seeded profiles and their posts.
 
 ## Trigger the pipeline manually
 
@@ -423,24 +500,25 @@ https://YOUR-VERCEL-DOMAIN/admin
 
 The browser asks for `ADMIN_USERNAME` and `ADMIN_PASSWORD`. The page offers:
 
-- **Add a builder** — paste an X username, `@handle`, or profile URL. The profile is
-  looked up immediately when possible; otherwise the next sync fills in the details.
 - **Pause** — hides a builder from the public directory and stops syncing their posts,
   without discarding the posts already stored.
 - **Remove** — hides them permanently. Seeded builders will not come back.
 - **Removed builders** — what has been removed, and the only place to restore one.
 - **Deleted posts** — the post blocklist, and the only place to unblock one.
-- **Discovered candidates** — the review queue, populated by a follow-graph pass.
-  The same people appear on `/network`, ranked by how many of the directory follow
-  them.
+
+Adding a builder is not here. It happens on `/`, which is the only form that asks
+for the tags a builder is required to have; a second path that skipped them would
+quietly reintroduce the untagged rows those tags exist to prevent.
 
 ### Curating from the pages themselves
 
-With admin credentials, `/` and `/posts` render their own controls, so curation
-happens where the content is rather than in a separate screen:
+With admin credentials, `/`, `/posts` and `/review` render their own controls, so
+curation happens where the content is rather than in a separate screen:
 
-- `/` — **Add a builder**, and **Remove** on each card.
+- `/` — **Add a builder** with their tags, **Edit tags** on each card, and **Remove**.
 - `/posts` — **Add a post** by link, and **Delete** on each row.
+- `/review` — the whole corpus with its tags, filterable by category, by builder and
+  by whether a tag was set by hand, with two tag slots and a save on every row.
 
 Both destructive controls ask for confirmation first, because both are permanent.
 
@@ -455,8 +533,16 @@ Two properties are worth knowing:
   synced. The roster stays exactly what was chosen for it.
 
 Changes take effect on the rank pages immediately, since those query the database
-on each request. The network graph and the insights brief are rebuilt on the
-six-hour cycle rather than on edit, because both are expensive to produce.
+on each request and hold no cached numbers. Re-tag a post and both `/posts` and
+`/categories` reflect it on the next page load. The insights brief is rewritten on
+the six-hour cycle rather than on edit, because it is a model call rather than a
+query.
+
+`/review` exists because the ranking pages are the wrong shape for correcting
+tags. They show thirty posts, only work, only mature — and the posts most worth
+correcting are exactly the ones that shape hides, work that was filed as
+`not-work` and so disappeared. Sorting the `not-work` filter by likes puts those
+at the top.
 
 Controls are gated on the credential tier, and the gate is enforced twice: the
 pages hide the controls from holders of the read-only site password, and every
@@ -477,18 +563,18 @@ request** — this single fact drives every design decision below.
 | User read | $0.010 |
 | Following/followers read | $0.010 |
 
-### The six-hour cycle: roughly $40/month at fifty builders
+### The six-hour cycle: roughly $40/month at sixty builders
 
 Each run reads any genuinely new posts (`getUserPosts` passes `since_id`) and
 re-reads metrics for posts that have just passed the settling age, capped at 100
 posts per run and batched 100 ids per request.
 
-Growing the roster from thirty to fifty raised this by roughly two thirds. The
+Growing the roster from thirty to sixty raised this by roughly two thirds. The
 metrics refresh is unaffected — it is capped per run, not per builder — so the
 increase is in new-post reads and daily profile reads.
 
 **Profile reads are refreshed daily, not every six hours.** At $0.010 each,
-fifty profiles four times a day is $60/month on its own — and follower counts do
+sixty profiles four times a day is $72/month on its own — and follower counts do
 not meaningfully move in six hours. `PROFILE_REFRESH_HOURS` in `lib/sync.ts` drops
 about three quarters of that cost and changes no number anyone looks at. Post
 fetching is unaffected because it uses the stored `x_user_id`.
@@ -508,43 +594,30 @@ bar, plus a weekly sweep for longer-term drift. That is cheaper *and* produces a
 better number: posts previously landed anywhere between 24 and 48 hours of age,
 where now they sit in a narrow band and are genuinely comparable.
 
-### The follow graph: $14.12 for the current one, and why it is manual
+### The follow graph: removed, and why
 
-A following list bills $0.010 per account returned. Reading all thirty builders'
-complete lists — roughly a thousand accounts each — would be about **$300**, and on
-the six-hour cycle it would exceed **$1,000/month**. That is more than everything
-else here combined.
+There used to be a `/network` page showing who the roster follows, built from
+following-list reads. It is gone, and the client function that read them is gone
+with it.
 
-So `getFollowing` requires an explicit ceiling from its caller, and the cost of a
-pass is exactly `scouts x perScout x $0.010`, knowable before the first request:
+A following list bills $0.010 per account returned. Reading sixty builders'
+complete lists — roughly a thousand accounts each — is about **$600**, and on the
+six-hour cycle it would exceed **$1,000/month**, more than everything else here
+combined. Even the budgeted version that shipped cost **$14.12** for a single pass
+of 30 builders x 50 accounts, produced 46 candidates, and had to be triggered by
+hand. That is a poor trade against reading a shortlist of feeds directly, which is
+how every builder currently on the roster was actually chosen.
 
-```bash
-# Ask what it would cost, spending nothing
-curl -H "Authorization: Bearer YOUR_CRON_SECRET" \
-  "https://YOUR-VERCEL-DOMAIN/api/network/build?scouts=30&perScout=50&dry=1"
-
-# Then actually run it
-curl -H "Authorization: Bearer YOUR_CRON_SECRET" \
-  "https://YOUR-VERCEL-DOMAIN/api/network/build?scouts=30&perScout=50"
-```
-
-The current graph cost **$14.12**: 30 builders x 50 most-recently-followed accounts,
-1,412 records read, 978 unique accounts, 46 kept. X returns following lists newest
-first, which is the useful end anyway — it reflects who someone is paying attention
-to now. Every pass is recorded in the `network_runs` table with its measured cost.
-
-Candidates are filtered by a cheap keyword prefilter, then screened in batches by
-the model, then ranked by how many of the directory follow them. That last signal
-is the strongest one available, because it is a judgement made by people already
-doing the work rather than an inference from a bio.
+The `discovery_candidates` and `network_runs` tables are left in the database
+rather than dropped, because their rows record what was considered and what it
+cost. Nothing writes to them any more.
 
 ## Model cost
 
 Far smaller than the X API. One call per builder who posted something new, plus
-one call for the brief, four times a day, plus a handful of batched screening
-calls whenever the follow graph is rebuilt. On `deepseek-v4-flash` that measured
-around 2,000 output tokens per builder call, which is roughly **$2–4/month** at
-thirty builders. Builders with nothing new are skipped entirely, so the cost
+one call for the brief, four times a day. On `deepseek-v4-flash` that measured
+around 2,000 output tokens per builder call, which is roughly **$3–5/month** at
+sixty builders. Builders with nothing new are skipped entirely, so the cost
 scales with how much the people you follow actually post.
 
 ## Verification completed

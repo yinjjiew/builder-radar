@@ -1,14 +1,17 @@
 import Link from "next/link";
+import { isAdmin } from "@/lib/role";
 
 const LINKS = [
-  { href: "/", label: "Directory" },
   { href: "/posts", label: "Post rank" },
   { href: "/categories", label: "Categories" },
-  { href: "/network", label: "Network" },
   { href: "/insights", label: "Insights" }
 ];
 
-export function SiteNav({ current }: { current: string }) {
+export async function SiteNav({ current }: { current: string }) {
+  // Review is a bulk editor with a form on every row, so it is only reachable
+  // with the admin credential and only advertised to it.
+  const admin = await isAdmin();
+
   return (
     <nav className="insights-nav" aria-label="Primary navigation">
       <Link href="/" className="wordmark insights-wordmark">
@@ -18,7 +21,7 @@ export function SiteNav({ current }: { current: string }) {
         Builder Radar
       </Link>
       <div className="nav-links">
-        {LINKS.filter((link) => link.href !== "/").map((link) => (
+        {LINKS.map((link) => (
           <Link
             key={link.href}
             href={link.href}
@@ -28,6 +31,15 @@ export function SiteNav({ current }: { current: string }) {
             {link.label}
           </Link>
         ))}
+        {admin ? (
+          <Link
+            href="/review"
+            className="nav-link-dark"
+            aria-current={current === "/review" ? "page" : undefined}
+          >
+            Review
+          </Link>
+        ) : null}
         {current === "/" ? null : (
           <Link href="/" className="nav-link-dark">
             Directory

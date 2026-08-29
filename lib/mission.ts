@@ -98,35 +98,37 @@ export const THEME_LABELS: Record<Theme, string> = {
 
 /**
  * The kind of work a post is about, and the dimension the category ranking
- * groups by. This list replaced an earlier one that could not be counted: it had
- * "utility-tool", "web-app", "dev-tool" and "api-service" as separate values
- * with no boundary between them, no value at all for the most common kind of
- * work on the roster — a site built for a client — and a catch-all
- * "creative-visual" that swallowed a third of the corpus.
+ * groups by.
  *
- * Two properties make this set countable, and both matter more than the names:
+ * This is the third attempt and the first one that survived being read against
+ * the corpus. The first set could not be counted at all — "utility-tool",
+ * "web-app" and "dev-tool" sat side by side with no boundary between them. The
+ * second fixed the boundaries but kept twelve values, which split the corpus so
+ * finely that eight of them ended up with fewer than five posts each: pairs like
+ * component-library and motion-interaction, or dev-tool and creative-tool, were
+ * being told apart on a distinction nobody cared about while both were too thin
+ * to rank. Seven values with real sample sizes answer more questions than twelve
+ * precise ones that each measure noise.
+ *
+ * Two properties make the set countable, and both matter more than the names:
  *
  *   Every value answers the same question. "What did this post hand over?" A
  *   category is never about who it was for, how it was made, or how finished it
  *   is; those are separate columns.
  *
  *   The set is ordered, and the first match wins. Overlap is unavoidable — a
- *   client site can be full of 3D, a tutorial can be about a shader — so
+ *   client site can be full of 3D, a portfolio can be a shader demo — so
  *   ambiguity is resolved by precedence rather than by the model's mood, which
  *   is what stops the same post landing in a different bucket every cycle.
  */
 export const PRODUCT_CATEGORIES = [
   "teaching",
-  "client-site",
-  "own-site",
-  "component-library",
-  "dev-tool",
-  "creative-tool",
-  "game-toy",
-  "motion-interaction",
+  "client-work",
+  "game",
+  "utility-tool",
+  "own-product",
+  "interface-craft",
   "interactive-3d",
-  "data-visual",
-  "web-app",
   "not-work"
 ] as const;
 
@@ -134,26 +136,62 @@ export type ProductCategory = (typeof PRODUCT_CATEGORIES)[number];
 
 export const PRODUCT_CATEGORY_LABELS: Record<ProductCategory, string> = {
   teaching: "Teaching the craft",
-  "client-site": "Site or experience for a client",
-  "own-site": "Their own site or portfolio",
-  "component-library": "UI components & libraries",
-  "dev-tool": "Tools & libraries for developers",
-  "creative-tool": "Tools for making things",
-  "game-toy": "Games & playable toys",
-  "motion-interaction": "Motion & interaction craft",
-  "interactive-3d": "3D, shaders & generative visuals",
-  "data-visual": "Data visualisation",
-  "web-app": "Working app or product",
+  "client-work": "Client & brand work",
+  game: "Games & playable toys",
+  "utility-tool": "Tools that get something done",
+  "own-product": "Their own site or product",
+  "interface-craft": "Interface & UI components",
+  "interactive-3d": "Interactive 3D & visuals",
   "not-work": "Not work"
 };
 
 /** The only category that means "this post did not hand over any made thing". */
 export const NOT_WORK: ProductCategory = "not-work";
 
-/** Everything a person can be said to build. Same vocabulary as the post categories. */
+/**
+ * Everything a person or a post can be said to be about. Same vocabulary for
+ * both, so a builder's stated output and the ranking of what resonates can be
+ * read against each other.
+ */
 export const WORK_KINDS = PRODUCT_CATEGORIES.filter(
   (value) => value !== NOT_WORK
 ) as Exclude<ProductCategory, "not-work">[];
+
+/**
+ * A post may carry two categories at most, and a builder two kinds of work.
+ *
+ * Two is not a compromise between one and many. One is right for almost every
+ * post, and the cases where it is wrong are real but narrow: a tutorial that is
+ * itself a playable toy, a client site released as an open-source library. A
+ * third slot would not describe anything the second cannot; it would only let a
+ * post be counted three times in a ranking of seven categories, which is how a
+ * leaderboard stops meaning anything.
+ *
+ * The model is only ever asked for one. The second slot exists for the owner,
+ * who is the one person able to tell a genuine double from a hedge.
+ */
+export const MAX_POST_CATEGORIES = 2;
+export const MAX_WORK_KINDS = 2;
+
+/**
+ * Accepts a list of category names from a form or a model and returns the ones
+ * that are real work categories, deduplicated, in the order given, capped.
+ * Everything that writes tags goes through this, so an unknown value can never
+ * reach a ranking and be counted as a category of its own.
+ */
+export function sanitizeWorkKinds(values: unknown, limit = MAX_POST_CATEGORIES) {
+  const list = Array.isArray(values) ? values : [values];
+  const out: string[] = [];
+  for (const value of list) {
+    if (typeof value !== "string") continue;
+    const trimmed = value.trim();
+    if (!WORK_KINDS.includes(trimmed as never)) continue;
+    if (out.includes(trimmed)) continue;
+    out.push(trimmed);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
 
 /**
  * The decision procedure handed to the model verbatim. It is written as ordered
@@ -169,36 +207,48 @@ beat later ones even when a later one also seems to apply.
    a joke, industry news, a hiring notice, conference or personal life, praise
    for someone else's work, or an award announcement that does not show the work
    itself. If the only thing being offered is a thought, it is not-work.
-2. teaching — the post exists to explain how something is done: a tutorial,
-   a written breakdown of a technique, a course, a livestream, a talk, or a
+2. teaching — the post exists to explain how something is done: a tutorial, a
+   written breakdown of a technique, a course, a livestream, a talk, or a
    published lesson. Choose this even when the subject is 3D or a client site,
-   because what is handed over is the explanation.
-3. client-site — a website or web experience made for a client, a brand, or an
-   employer. "New work", "we designed and built X for Y", a case study, a launch
-   with a company name, a site-of-the-day for a named brand project. Choose this
-   however the site was built, including when it is heavily 3D or animated.
-4. own-site — a site the author made for themselves: their portfolio, their
-   studio site, a personal site, or the landing page for their own product.
-5. component-library — reusable interface pieces other people install into their
-   own UI: a component, a set of transitions or effects, a design system.
-6. dev-tool — tooling for people who write code, and not a UI component: a
-   library, framework, engine, renderer, plugin, editor extension, or a
-   contribution to one.
-7. creative-tool — an application whose whole point is that someone else makes
-   something visual with it: an editor, a generator, a playground, a canvas.
-8. game-toy — something playable. A game, a puzzle, or a toy with no purpose
-   beyond messing with it.
-9. motion-interaction — the artifact is the behaviour of an interface: a
-   transition, a hover or scroll effect, a micro-interaction, an animated
-   component. Choose this over interactive-3d when the thing shown is a piece of
-   interface, even if it is rendered with WebGL.
-10. interactive-3d — the artifact is a scene or a visual rather than an
-   interface: a 3D scene, a shader, a simulation, a generative or audiovisual
-   piece, shown for what it looks like.
-11. data-visual — the artifact is driven by a dataset: a chart, a map, an
-   explorable data piece.
-12. web-app — a working application or product where the point is what it does
-   rather than how it looks or who it was for.
+   because what is handed over is the explanation rather than the thing.
+3. client-work — made for someone else: a client, a brand, or an employer.
+   "New work", "we designed and built X for Y", a case study, a launch with a
+   company name, an award for a named brand project. Choose this however the work
+   was built, including when it is heavily 3D or animated, because who it was for
+   is the most reliable fact about it.
+4. game — something playable, made to be played. A game, a puzzle, or a toy with
+   no purpose beyond messing with it.
+5. utility-tool — the thing exists to get something done. Anything someone opens
+   to produce an outcome: a utility, an editor, a generator, a converter, a
+   playground, a dashboard, an app that saves someone time at work or in daily
+   life, and equally a library, framework, engine or plugin that does that job
+   for people who write code. The test is whether a person would use it to
+   accomplish something rather than to look at it. Choose this over own-product
+   even when the author built and owns the tool, because what it is matters more
+   than who owns it.
+6. own-product — the author's own presence or property, not a tool: their
+   portfolio, their studio site, a personal site, a personal blog, a redesign of
+   their own site, or their own product where the post is about the launch and
+   the brand rather than about what it does for you. It must genuinely be theirs;
+   work for an employer is client-work. Choose this over the two categories below
+   even when the site is full of 3D or animation, because a portfolio is a
+   portfolio however it is rendered.
+7. interface-craft — the artifact is a piece of interface. A reusable component,
+   a UI kit or design system, a set of transitions or effects other people can
+   drop in, a hover or scroll behaviour, a micro-interaction, an animated
+   component, a layout or typographic detail. Both the still thing and its
+   behaviour belong here: a button someone can install and the way that button
+   moves are the same kind of work. Choose this over interactive-3d whenever the
+   thing shown is part of an interface, even if it is rendered with WebGL.
+8. interactive-3d — the artifact is a scene or a visual, shown for what it looks
+   like rather than for what it does: a 3D scene, a shader, a simulation, a
+   particle or fluid study, a generative or audiovisual piece, a WebGL
+   experiment, or a data-driven visual made to be looked at and explored. If
+   there is no interface and no task, and the point is the image, it is this.
+
+Choose exactly one, always. If two rules seem to fit, the earlier one wins; that
+is what the order is for, and hedging is what made an earlier pass of this corpus
+impossible to count.
 
 Two habits to avoid, both seen in earlier passes of this corpus:
   A post can show real work in a video or a link with almost no words. "progress
@@ -275,16 +325,12 @@ export const AUDIENCE_LABELS: Record<Audience, string> = {
  */
 export const WORK_KIND_LABELS: Record<ProductCategory, string> = {
   teaching: "teaching",
-  "client-site": "client sites",
-  "own-site": "own sites",
-  "component-library": "UI components",
-  "dev-tool": "developer tools",
-  "creative-tool": "tools for makers",
-  "game-toy": "games & toys",
-  "motion-interaction": "motion & interaction",
-  "interactive-3d": "3D & shaders",
-  "data-visual": "data visualisation",
-  "web-app": "apps & products",
+  "client-work": "client work",
+  game: "games",
+  "utility-tool": "tools",
+  "own-product": "own products",
+  "interface-craft": "interface & UI",
+  "interactive-3d": "3D & visuals",
   "not-work": "unclear"
 };
 

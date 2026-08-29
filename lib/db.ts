@@ -1,11 +1,6 @@
 import postgres, { type Sql } from "postgres";
 import { seedCreators } from "@/lib/seed-creators";
-import type {
-  Builder,
-  CreatorStatus,
-  DiscoveryCandidate,
-  ManagedCreator
-} from "@/lib/types";
+import type { Builder, CreatorStatus, ManagedCreator } from "@/lib/types";
 
 const seedUsernames = new Set<string>(
   seedCreators.map((creator) => creator.username.toLowerCase())
@@ -54,9 +49,6 @@ export async function getBuilders(): Promise<Builder[]> {
       followersCount: null,
       verified: false,
       lastSyncedAt: null,
-      focusSummary: null,
-      focusProducts: [],
-      focusRelevance: null,
       workKinds: [],
       workSummary: null,
       postCount: 0,
@@ -75,9 +67,6 @@ export async function getBuilders(): Promise<Builder[]> {
       followers_count: number | null;
       verified: boolean;
       last_synced_at: Date | null;
-      focus_summary: string | null;
-      focus_products: string[];
-      focus_relevance: number | null;
       work_kinds: string[] | null;
       work_summary: string | null;
       post_count: string;
@@ -93,9 +82,6 @@ export async function getBuilders(): Promise<Builder[]> {
       c.followers_count,
       c.verified,
       c.last_synced_at,
-      c.focus_summary,
-      c.focus_products,
-      c.focus_relevance,
       c.work_kinds,
       c.work_summary,
       -- The directory used to carry each builder's five newest posts. It now
@@ -121,9 +107,6 @@ export async function getBuilders(): Promise<Builder[]> {
     followersCount: row.followers_count,
     verified: row.verified,
     lastSyncedAt: row.last_synced_at?.toISOString() ?? null,
-    focusSummary: row.focus_summary,
-    focusProducts: row.focus_products ?? [],
-    focusRelevance: row.focus_relevance,
     workKinds: row.work_kinds ?? [],
     workSummary: row.work_summary,
     postCount: Number(row.post_count ?? 0),
@@ -174,47 +157,5 @@ export async function getManagedCreators(): Promise<ManagedCreator[]> {
     lastSyncedAt: row.last_synced_at?.toISOString() ?? null,
     postCount: Number(row.post_count),
     isSeed: seedUsernames.has(row.username.toLowerCase())
-  }));
-}
-
-export async function getDiscoveryCandidates(): Promise<DiscoveryCandidate[]> {
-  if (!hasDatabase()) return [];
-  const sql = getDb();
-  const rows = await sql<
-    Array<{
-      id: string;
-      x_user_id: string;
-      username: string;
-      name: string;
-      description: string;
-      profile_image_url: string | null;
-      followers_count: number;
-      relevance_score: number | null;
-      relevance_reason: string | null;
-      discovered_by: string[];
-      status: "pending" | "approved" | "rejected";
-      created_at: Date;
-    }>
-  >`
-    select * from discovery_candidates
-    order by
-      case status when 'pending' then 0 when 'approved' then 1 else 2 end,
-      relevance_score desc nulls last,
-      created_at desc
-  `;
-
-  return rows.map((row) => ({
-    id: row.id,
-    xUserId: row.x_user_id,
-    username: row.username,
-    name: row.name,
-    description: row.description,
-    profileImageUrl: row.profile_image_url,
-    followersCount: row.followers_count,
-    relevanceScore: row.relevance_score,
-    relevanceReason: row.relevance_reason,
-    discoveredBy: row.discovered_by,
-    status: row.status,
-    createdAt: row.created_at.toISOString()
   }));
 }

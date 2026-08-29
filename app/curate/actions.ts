@@ -8,6 +8,8 @@ import {
   blockPost,
   removeUp,
   restoreUp,
+  setCreatorTags,
+  setPostCategories,
   unblockPost,
   type CurateResult
 } from "@/lib/curate";
@@ -23,10 +25,29 @@ import { requireAdmin } from "@/lib/role";
  * check below is the actual protection.
  */
 
-const PATHS = ["/", "/posts", "/categories", "/admin"];
+/**
+ * Every page that reads tags is invalidated after every edit, which is what makes
+ * a correction show up in both rankings on the next page view rather than at the
+ * next six-hour cycle. The pages compute their statistics per request, so there
+ * is no cached number to go stale behind them.
+ */
+const PATHS = ["/", "/posts", "/categories", "/review", "/admin"];
 
 function refresh() {
   for (const path of PATHS) revalidatePath(path);
+}
+
+/**
+ * Reads the tag selects out of a form. The controls are two named slots rather
+ * than a multi-select because a fixed maximum of two is easier to use and to
+ * validate than a list that has to be trimmed after the fact; the sanitiser drops
+ * blanks, duplicates and anything outside the vocabulary.
+ */
+function tagsFrom(formData: FormData) {
+  return formData
+    .getAll("tag")
+    .map((value) => String(value ?? "").trim())
+    .filter(Boolean);
 }
 
 /**
@@ -75,8 +96,26 @@ export async function unblockPostAction(formData: FormData) {
 export async function addUpAction(formData: FormData) {
   await requireAdmin();
   const link = String(formData.get("link") ?? "");
+  const note = String(formData.get("note") ?? "");
   const returnTo = target(formData, "/");
-  finish(await addUpByLink(link), returnTo);
+  finish(await addUpByLink(link, tagsFrom(formData), note), returnTo);
+}
+
+export async function setCreatorTagsAction(formData: FormData) {
+  await requireAdmin();
+  const creatorId = String(formData.get("creatorId") ?? "").trim();
+  const note = String(formData.get("note") ?? "");
+  const returnTo = target(formData, "/");
+  if (!creatorId) finish({ ok: false, message: "No builder specified." }, returnTo);
+  finish(await setCreatorTags(creatorId, tagsFrom(formData), note), returnTo);
+}
+
+export async function setPostCategoriesAction(formData: FormData) {
+  await requireAdmin();
+  const postId = String(formData.get("postId") ?? "").trim();
+  const returnTo = target(formData, "/review");
+  if (!postId) finish({ ok: false, message: "No post specified." }, returnTo);
+  finish(await setPostCategories(postId, tagsFrom(formData)), returnTo);
 }
 
 export async function removeUpAction(formData: FormData) {

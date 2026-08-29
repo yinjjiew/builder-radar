@@ -23,7 +23,11 @@ export type Builder = {
   posts: BuilderPost[];
 };
 
-export type CreatorStatus = "approved" | "paused" | "removed";
+/**
+ * 'guest' is the author of a post added by hand who is not on the ranked roster:
+ * their posts count towards the statistics, they do not appear as a builder.
+ */
+export type CreatorStatus = "approved" | "paused" | "removed" | "guest";
 
 export type ManagedCreator = {
   id: string;

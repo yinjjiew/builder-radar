@@ -1,11 +1,21 @@
 import { BuilderCard } from "@/components/builder-card";
+import { addUpAction } from "@/app/curate/actions";
 import { getBuilders, hasDatabase } from "@/lib/db";
+import { isAdmin } from "@/lib/role";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
-export default async function HomePage() {
-  const builders = await getBuilders();
+export default async function HomePage({
+  searchParams
+}: {
+  searchParams: Promise<{ done?: string; error?: string }>;
+}) {
+  const [builders, admin, params] = await Promise.all([
+    getBuilders(),
+    isAdmin(),
+    searchParams
+  ]);
   const latestSync = builders
     .map((builder) => builder.lastSyncedAt)
     .filter((value): value is string => Boolean(value))
@@ -84,9 +94,38 @@ export default async function HomePage() {
           </div>
         ) : null}
 
+        {params.done ? <div className="notice notice-success">{params.done}</div> : null}
+        {params.error ? <div className="notice notice-error">{params.error}</div> : null}
+
+        {admin ? (
+          <div className="curate-inline">
+            <h3>Add a builder</h3>
+            <p className="section-note">
+              Paste an X handle or profile link. Their posts arrive with the next six-hour update,
+              and the network graph and insights pick them up on the same cycle.
+            </p>
+            <form action={addUpAction} className="add-creator-form">
+              <label className="sr-only" htmlFor="up-link">
+                X username or profile link
+              </label>
+              <input
+                id="up-link"
+                name="link"
+                placeholder="@username or x.com/username"
+                autoComplete="off"
+                required
+              />
+              <input type="hidden" name="returnTo" value="/" />
+              <button type="submit" className="approve-button">
+                Add builder
+              </button>
+            </form>
+          </div>
+        ) : null}
+
         <div className="builder-list">
           {builders.map((builder, index) => (
-            <BuilderCard builder={builder} rank={index + 1} key={builder.id} />
+            <BuilderCard builder={builder} rank={index + 1} admin={admin} key={builder.id} />
           ))}
         </div>
       </section>

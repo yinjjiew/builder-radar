@@ -2,18 +2,25 @@ import Image from "next/image";
 import Link from "next/link";
 import { getDiscoveryCandidates, getManagedCreators, hasDatabase } from "@/lib/db";
 import { addCreator, reviewCandidate, setCreatorStatus } from "@/app/admin/actions";
+import { ConfirmButton } from "@/components/confirm-button";
+import { restoreUpAction, unblockPostAction } from "@/app/curate/actions";
+import { getBlockedPosts } from "@/lib/curate";
 import { compactNumber } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
-type AdminSearchParams = Promise<{ added?: string; error?: string }>;
+type AdminSearchParams = Promise<{
+  added?: string;
+  error?: string;
+  done?: string;
+}>;
 
 export default async function AdminPage({
   searchParams
 }: {
   searchParams: AdminSearchParams;
 }) {
-  const { added, error } = await searchParams;
+  const { added, error, done } = await searchParams;
 
   if (!hasDatabase()) {
     return (
@@ -33,10 +40,14 @@ export default async function AdminPage({
     );
   }
 
-  const [creators, candidates] = await Promise.all([
+  const [allCreators, candidates, blockedPosts] = await Promise.all([
     getManagedCreators(),
-    getDiscoveryCandidates()
+    getDiscoveryCandidates(),
+    getBlockedPosts()
   ]);
+
+  const creators = allCreators.filter((creator) => creator.status !== "removed");
+  const removed = allCreators.filter((creator) => creator.status === "removed");
 
   return (
     <main className="admin-shell">
@@ -49,6 +60,7 @@ export default async function AdminPage({
       </header>
 
       {added ? <div className="notice notice-success">{added}</div> : null}
+      {done ? <div className="notice notice-success">{done}</div> : null}
       {error ? <div className="notice notice-error">{error}</div> : null}
 
       <section className="admin-section">
@@ -126,8 +138,94 @@ export default async function AdminPage({
                   <form action={setCreatorStatus}>
                     <input type="hidden" name="id" value={creator.id} />
                     <input type="hidden" name="status" value="removed" />
-                    <button type="submit" className="reject-button">
+                    <ConfirmButton
+                      className="reject-button"
+                      message={`Remove @${creator.username} from the directory permanently?\n\nThey will drop out of the ranking and the network, and the six-hour update will not add them back — including if they are on the seed list.\n\nYou can undo this from the removed list below.`}
+                    >
                       Remove
+                    </ConfirmButton>
+                  </form>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="admin-section">
+        <h2>Removed builders ({removed.length})</h2>
+        <p className="section-note">
+          Removal is permanent by design: the six-hour update will not add these back, even the
+          ones that came from the seed list. This is the only place it can be undone.
+        </p>
+        {removed.length === 0 ? (
+          <p className="section-note">Nothing removed.</p>
+        ) : (
+          <ul className="creator-rows">
+            {removed.map((creator) => (
+              <li key={creator.id} className="creator-row status-removed">
+                <div className="creator-identity">
+                  <strong>{creator.name}</strong>
+                  <a href={`https://x.com/${creator.username}`} target="_blank" rel="noreferrer">
+                    @{creator.username}
+                  </a>
+                </div>
+                <div className="creator-stats">
+                  <span>{compactNumber(creator.followersCount)}</span>
+                  <span>{creator.postCount} posts</span>
+                  {creator.isSeed ? <span className="tag">seed</span> : null}
+                </div>
+                <div className="creator-controls">
+                  <form action={restoreUpAction}>
+                    <input type="hidden" name="creatorId" value={creator.id} />
+                    <input type="hidden" name="returnTo" value="/admin" />
+                    <button type="submit" className="ghost-button">
+                      Restore
+                    </button>
+                  </form>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="admin-section">
+        <h2>Deleted posts ({blockedPosts.length})</h2>
+        <p className="section-note">
+          These post ids are refused on every sync, which is what stops the next update from
+          collecting them again from their author&rsquo;s timeline. Unblocking one lets it return.
+        </p>
+        {blockedPosts.length === 0 ? (
+          <p className="section-note">No posts deleted.</p>
+        ) : (
+          <ul className="creator-rows">
+            {blockedPosts.map((post) => (
+              <li key={post.postId} className="creator-row">
+                <div className="creator-identity">
+                  <strong>@{post.username || "unknown"}</strong>
+                  {post.url ? (
+                    <a href={post.url} target="_blank" rel="noreferrer">
+                      Open on X
+                    </a>
+                  ) : null}
+                </div>
+                <div className="creator-stats">
+                  <span>
+                    {post.createdAt
+                      ? new Date(post.createdAt).toLocaleDateString("en", {
+                          month: "short",
+                          day: "numeric"
+                        })
+                      : ""}
+                  </span>
+                </div>
+                <div className="creator-controls">
+                  <form action={unblockPostAction}>
+                    <input type="hidden" name="postId" value={post.postId} />
+                    <input type="hidden" name="returnTo" value="/admin" />
+                    <button type="submit" className="ghost-button">
+                      Unblock
                     </button>
                   </form>
                 </div>

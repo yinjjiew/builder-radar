@@ -201,6 +201,136 @@ export const seedCreators = [
     label: "Robin Payot",
     bucket: "3d",
     summary: "Immersive websites and creative Three.js work."
+  },
+
+  // --- The people building the tools ordinary people would actually use ---
+  // The first thirty leaned engineer-facing, and the analysis said so every
+  // cycle: almost no post in the corpus was aimed at a non-engineer. These
+  // twenty are chosen to fix that, because a directory that cannot see what a
+  // non-engineer wants cannot inform a product built for them.
+  {
+    username: "bentossell",
+    label: "Ben Tossell",
+    bucket: "no-code",
+    summary: "Founded Makerpad; bio reads \"can't code, won't code\"."
+  },
+  {
+    username: "callmevlad",
+    label: "Vlad Magdalin",
+    bucket: "no-code",
+    summary: "Co-founder of Webflow; visual web building for non-programmers."
+  },
+  {
+    username: "koenbok",
+    label: "Koen Bok",
+    bucket: "no-code",
+    summary: "CEO of Framer; design-to-site without writing code."
+  },
+  {
+    username: "wadefoster",
+    label: "Wade Foster",
+    bucket: "no-code",
+    summary: "CEO of Zapier; automation assembled by people who do not program."
+  },
+  {
+    username: "EricSimons",
+    label: "Eric Simons",
+    bucket: "no-code",
+    summary: "CEO of Bolt.new; prompt-to-app generation in the browser."
+  },
+  {
+    username: "MaorShlomo",
+    label: "Maor Shlomo",
+    bucket: "no-code",
+    summary: "Founder of Base44; describe an app and get a working one."
+  },
+  {
+    username: "amanrsanger",
+    label: "Aman Sanger",
+    bucket: "no-code",
+    summary: "Co-founder of Cursor; AI writing and editing real codebases."
+  },
+  {
+    username: "zoink",
+    label: "Dylan Field",
+    bucket: "no-code",
+    summary: "CEO of Figma; the design layer most non-engineers start from."
+  },
+
+  // --- Solo shippers whose audience is not engineers ---
+  {
+    username: "marclou",
+    label: "Marc Lou",
+    bucket: "indie",
+    summary: "Ships small paid products fast and teaches the method publicly."
+  },
+  {
+    username: "dannypostma",
+    label: "Danny Postma",
+    bucket: "indie",
+    summary: "Builds AI consumer products solo; HeadshotPro."
+  },
+  {
+    username: "tdinh_me",
+    label: "Tony Dinh",
+    bucket: "indie",
+    summary: "Solo developer shipping desktop and AI products in public."
+  },
+  {
+    username: "damonchen",
+    label: "Damon Chen",
+    bucket: "indie",
+    summary: "Bootstrapped small SaaS products; Testimonial and PDF.ai."
+  },
+  {
+    username: "thepatwalls",
+    label: "Pat Walls",
+    bucket: "indie",
+    summary: "Starter Story; on a stated mission to get a billion people building."
+  },
+  {
+    username: "dvassallo",
+    label: "Daniel Vassallo",
+    bucket: "indie",
+    summary: "Argues for small simple products over ambitious software."
+  },
+  {
+    username: "shl",
+    label: "Sahil Lavingia",
+    bucket: "indie",
+    summary: "Founded Gumroad; tools that let creators sell without engineering."
+  },
+  {
+    username: "harrydry",
+    label: "Harry Dry",
+    bucket: "indie",
+    summary: "Marketing Examples; the launch and copy half of shipping."
+  },
+
+  // --- AI tools aimed squarely at people who do not code ---
+  {
+    username: "mreflow",
+    label: "Matt Wolfe",
+    bucket: "ai-creator",
+    summary: "Explains AI tools to a large non-technical audience."
+  },
+  {
+    username: "nickfloats",
+    label: "Nick St. Pierre",
+    bucket: "ai-creator",
+    summary: "Teaches image generation; craft without technical skill."
+  },
+  {
+    username: "LinusEkenstam",
+    label: "Linus Ekenstam",
+    bucket: "ai-creator",
+    summary: "Demonstrates AI tooling for making things, for non-engineers."
+  },
+  {
+    username: "javilopen",
+    label: "Javi Lopez",
+    bucket: "ai-creator",
+    summary: "Founded Magnific; AI creative products with mainstream reach."
   }
 ] as const;
 
@@ -209,6 +339,7 @@ export type SeedBucket = (typeof seedCreators)[number]["bucket"];
 export const BUCKET_LABELS: Record<string, string> = {
   "no-code": "AI & no-code tools",
   indie: "Solo shippers",
+  "ai-creator": "AI tools for non-coders",
   craft: "Design engineering",
   "3d": "3D & creative coding"
 };

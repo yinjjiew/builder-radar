@@ -1,15 +1,26 @@
 import Link from "next/link";
+import { ConfirmButton } from "@/components/confirm-button";
 import { SiteNav } from "@/components/site-nav";
+import { addPostAction, deletePostAction } from "@/app/curate/actions";
 import { hasDatabase } from "@/lib/db";
 import { cleanPostText, compactNumber } from "@/lib/format";
 import { productCategoryLabel } from "@/lib/mission";
-import { getCycleStatus, getTopPosts, type PostRankMetric } from "@/lib/stats";
+import { isAdmin } from "@/lib/role";
+import {
+  getCycleStatus,
+  getTopPosts,
+  parseWindow,
+  RECENT_WINDOW_DAYS,
+  type PostRankMetric,
+  type RankWindow
+} from "@/lib/stats";
 
 export const dynamic = "force-dynamic";
 
 export const metadata = {
   title: "Post rank · Builder Radar",
-  description: "The 30 strongest posts in the directory, by raw likes and by likes per 1,000 followers."
+  description:
+    "The 30 strongest posts in the directory, over all history or the last two weeks, by raw likes and by likes per 1,000 followers."
 };
 
 const RANK_SIZE = 30;
@@ -24,13 +35,19 @@ function stamp(value: string | null | undefined) {
   });
 }
 
+function href(metric: PostRankMetric, window: RankWindow) {
+  return `/posts?by=${metric}&window=${window}`;
+}
+
 export default async function PostRankPage({
   searchParams
 }: {
-  searchParams: Promise<{ by?: string }>;
+  searchParams: Promise<{ by?: string; window?: string; done?: string; error?: string }>;
 }) {
   const params = await searchParams;
   const metric: PostRankMetric = params.by === "likes" ? "likes" : "rate";
+  const window = parseWindow(params.window);
+  const admin = await isAdmin();
 
   if (!hasDatabase()) {
     return (
@@ -41,40 +58,68 @@ export default async function PostRankPage({
     );
   }
 
-  const [posts, cycle] = await Promise.all([getTopPosts(metric, RANK_SIZE), getCycleStatus()]);
+  const [posts, cycle] = await Promise.all([
+    getTopPosts(metric, window, RANK_SIZE),
+    getCycleStatus()
+  ]);
 
   const peak = posts.reduce(
     (max, post) => Math.max(max, metric === "likes" ? post.likeCount : post.engagement),
     0
   );
 
+  const returnTo = href(metric, window);
+
   return (
     <main className="insights-shell">
       <SiteNav current="/posts" />
+
+      {params.done ? <div className="notice notice-success">{params.done}</div> : null}
+      {params.error ? <div className="notice notice-error">{params.error}</div> : null}
 
       <header className="insights-header">
         <p className="eyebrow">Post rank</p>
         <h1>The {RANK_SIZE} strongest posts in the directory.</h1>
         <p className="mission-line">
-          Two rankings of the same corpus. They disagree, and the disagreement is the useful part:
-          raw likes measure reach, likes per 1,000 followers measure resonance.
+          Four views of the same corpus, and the disagreements between them are the useful part:
+          raw likes measure reach, likes per 1,000 followers measure resonance, and the range
+          decides whether you are asking what works or what is working now.
         </p>
 
-        <div className="metric-toggle" role="group" aria-label="Ranking metric">
-          <Link
-            href="/posts?by=rate"
-            className={metric === "rate" ? "metric-option active" : "metric-option"}
-            aria-current={metric === "rate" ? "true" : undefined}
-          >
-            Likes per 1k followers
-          </Link>
-          <Link
-            href="/posts?by=likes"
-            className={metric === "likes" ? "metric-option active" : "metric-option"}
-            aria-current={metric === "likes" ? "true" : undefined}
-          >
-            Raw likes
-          </Link>
+        <div className="toggle-stack">
+          <div className="metric-toggle" role="group" aria-label="Ranking metric">
+            <Link
+              href={href("rate", window)}
+              className={metric === "rate" ? "metric-option active" : "metric-option"}
+              aria-current={metric === "rate" ? "true" : undefined}
+            >
+              Likes per 1k followers
+            </Link>
+            <Link
+              href={href("likes", window)}
+              className={metric === "likes" ? "metric-option active" : "metric-option"}
+              aria-current={metric === "likes" ? "true" : undefined}
+            >
+              Raw likes
+            </Link>
+          </div>
+
+          <div className="metric-toggle" role="group" aria-label="Time range">
+            <Link
+              href={href(metric, "all")}
+              className={window === "all" ? "metric-option active" : "metric-option"}
+              aria-current={window === "all" ? "true" : undefined}
+            >
+              All history
+            </Link>
+            <Link
+              href={href(metric, "recent")}
+              className={window === "recent" ? "metric-option active" : "metric-option"}
+              aria-current={window === "recent" ? "true" : undefined}
+            >
+              Last {RECENT_WINDOW_DAYS} days
+            </Link>
+          </div>
         </div>
 
         <p className="footnote toggle-note">
@@ -82,7 +127,38 @@ export default async function PostRankPage({
             ? "Ranked by likes divided by the author's follower count. This is the fairer comparison: it asks how hard a post landed relative to the audience that saw it, so a small account with a genuine hit outranks a large account posting routinely."
             : "Ranked by absolute like count. This mostly ranks audience size — the largest accounts dominate regardless of whether a post did well for them. Useful for seeing what reached the most people, misleading as a measure of quality."}
         </p>
+        <p className="footnote toggle-note">
+          {window === "all"
+            ? "Every post ever collected. The most reliable read, and the one to trust when the two ranges disagree, because it has the most evidence behind it."
+            : `Only posts from the last ${RECENT_WINDOW_DAYS} days — the same window in which like counts are still being actively refreshed, so these figures are the best maintained. A shorter range means fewer posts, so treat a narrow lead as noise.`}
+        </p>
       </header>
+
+      {admin ? (
+        <section className="panel curate-panel">
+          <h2>Add a post</h2>
+          <p className="section-note">
+            Paste the link to any post. If its author is not on the roster they are stored as a
+            guest, so the post joins the rankings without joining the builder list.
+          </p>
+          <form action={addPostAction} className="add-creator-form">
+            <label className="sr-only" htmlFor="post-link">
+              Post link
+            </label>
+            <input
+              id="post-link"
+              name="link"
+              placeholder="https://x.com/username/status/123…"
+              autoComplete="off"
+              required
+            />
+            <input type="hidden" name="returnTo" value={returnTo} />
+            <button type="submit" className="approve-button">
+              Add post
+            </button>
+          </form>
+        </section>
+      ) : null}
 
       <section className="panel">
         <ol className="rank-list">
@@ -110,6 +186,7 @@ export default async function PostRankPage({
                         day: "numeric"
                       })}
                       {post.mature ? null : <span className="fresh-flag">still climbing</span>}
+                      {post.addedByHand ? <span className="fresh-flag">added by hand</span> : null}
                     </span>
                   </div>
 
@@ -125,6 +202,18 @@ export default async function PostRankPage({
                     <a href={post.url} target="_blank" rel="noreferrer" className="rank-link">
                       Open post
                     </a>
+                    {admin ? (
+                      <form action={deletePostAction} className="inline-form">
+                        <input type="hidden" name="postId" value={post.id} />
+                        <input type="hidden" name="returnTo" value={returnTo} />
+                        <ConfirmButton
+                          className="danger-link"
+                          message={`Delete @${post.username}'s post permanently?\n\nIt will be removed from every ranking and will never be collected again, even though it stays on X.\n\nThis cannot be undone from this page.`}
+                        >
+                          Delete
+                        </ConfirmButton>
+                      </form>
+                    ) : null}
                   </div>
                 </div>
 
@@ -147,7 +236,13 @@ export default async function PostRankPage({
           })}
         </ol>
 
-        {posts.length ? null : <p className="empty-note">No posts collected yet.</p>}
+        {posts.length ? null : (
+          <p className="empty-note">
+            {window === "recent"
+              ? `No posts in the last ${RECENT_WINDOW_DAYS} days yet.`
+              : "No posts collected yet."}
+          </p>
+        )}
       </section>
 
       <footer className="insights-footer">

@@ -31,6 +31,7 @@ export type XPost = {
 
 type XResponse<T> = {
   data?: T;
+  includes?: { users?: XUser[] };
   meta?: { next_token?: string; newest_id?: string; oldest_id?: string };
   errors?: Array<{ title?: string; detail?: string }>;
 };
@@ -136,6 +137,32 @@ export async function getPostsByIds(ids: string[]) {
     posts.push(...(response.data ?? []));
   }
   return posts;
+}
+
+/**
+ * A single post together with its author, for adding one by hand from a link.
+ *
+ * The author comes back in the same request via an expansion rather than a second
+ * lookup, which matters because the person may not be on the roster at all: their
+ * follower count is what makes the post comparable to the rest of the corpus, so
+ * a post cannot be stored usefully without it.
+ */
+export async function getPostWithAuthor(id: string) {
+  const response = await xFetch<XPost & { author_id?: string }>(`/tweets/${id}`, {
+    "tweet.fields": "created_at,public_metrics,author_id",
+    expansions: "author_id",
+    "user.fields": "description,profile_image_url,public_metrics,verified"
+  });
+
+  const post = response.data;
+  if (!post?.id) return null;
+
+  const author =
+    response.includes?.users?.find((user) => user.id === post.author_id) ??
+    response.includes?.users?.[0] ??
+    null;
+
+  return { post, author };
 }
 
 /**

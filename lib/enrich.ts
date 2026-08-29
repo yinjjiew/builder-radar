@@ -111,7 +111,10 @@ async function selectCandidates(): Promise<Candidate[]> {
       left join post_insights pi on pi.post_id = recent.id
       where pi.post_id is null or pi.prompt_version < ${PROMPT_VERSION}
     ) untagged on true
-    where c.status = 'approved'
+    -- Guests are included so that a post added by hand gets a product category.
+    -- Without it the post would appear in the post rank but be invisible to the
+    -- category ranking, which only counts tagged posts.
+    where c.status in ('approved', 'guest')
     order by c.followers_count desc nulls last
   `;
 

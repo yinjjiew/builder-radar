@@ -1,8 +1,18 @@
 import Image from "next/image";
+import { ConfirmButton } from "@/components/confirm-button";
+import { removeUpAction } from "@/app/curate/actions";
 import type { Builder } from "@/lib/types";
 import { cleanPostText, compactNumber, relativeDate } from "@/lib/format";
 
-export function BuilderCard({ builder, rank }: { builder: Builder; rank: number }) {
+export function BuilderCard({
+  builder,
+  rank,
+  admin = false
+}: {
+  builder: Builder;
+  rank: number;
+  admin?: boolean;
+}) {
   return (
     <article className="builder-card">
       <div className="rank-column" aria-label={`Rank ${rank}`}>
@@ -42,9 +52,25 @@ export function BuilderCard({ builder, rank }: { builder: Builder; rank: number 
             </div>
           </div>
 
-          <div className="follower-count">
-            <strong>{compactNumber(builder.followersCount)}</strong>
-            <span>{builder.followersCount === null ? "" : "followers"}</span>
+          {/* The rank column is only wide enough for the number, so the one admin
+              control on this card sits under the follower count instead. */}
+          <div className="builder-aside">
+            <div className="follower-count">
+              <strong>{compactNumber(builder.followersCount)}</strong>
+              <span>{builder.followersCount === null ? "" : "followers"}</span>
+            </div>
+            {admin ? (
+              <form action={removeUpAction} className="inline-form">
+                <input type="hidden" name="creatorId" value={builder.id} />
+                <input type="hidden" name="returnTo" value="/" />
+                <ConfirmButton
+                  className="danger-link"
+                  message={`Remove @${builder.username} from the directory permanently?\n\nThey will drop out of the ranking and the network, and the six-hour update will not add them back.\n\nTheir collected posts stop counting towards the statistics.`}
+                >
+                  Remove
+                </ConfirmButton>
+              </form>
+            ) : null}
           </div>
         </header>
 

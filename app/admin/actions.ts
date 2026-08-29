@@ -3,11 +3,20 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getDb } from "@/lib/db";
+import { requireAdmin } from "@/lib/role";
 import { lookupUsersByUsernames, type XUser } from "@/lib/x";
 import { normalizeUsername } from "@/lib/username";
 import type { CreatorStatus } from "@/lib/types";
 
+/**
+ * These were previously protected only by living on `/admin`, which the gate
+ * restricts to admin credentials. That is no longer sufficient: the same actions
+ * are now reachable from pages the read-only viewing password can open, and a
+ * server action is posted to whichever route rendered it.
+ */
+
 export async function addCreator(formData: FormData) {
+  await requireAdmin();
   const username = normalizeUsername(String(formData.get("username") ?? ""));
   if (!username) {
     redirect("/admin?error=Enter+a+valid+X+username.");
@@ -57,6 +66,7 @@ export async function addCreator(formData: FormData) {
 }
 
 export async function setCreatorStatus(formData: FormData) {
+  await requireAdmin();
   const id = String(formData.get("id") ?? "");
   const status = String(formData.get("status") ?? "");
   if (!id || !["approved", "paused", "removed"].includes(status)) return;
@@ -73,6 +83,7 @@ export async function setCreatorStatus(formData: FormData) {
 }
 
 export async function reviewCandidate(formData: FormData) {
+  await requireAdmin();
   const id = String(formData.get("id") ?? "");
   const decision = String(formData.get("decision") ?? "");
   if (!id || !["approved", "rejected"].includes(decision)) return;

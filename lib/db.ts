@@ -166,9 +166,10 @@ export async function getManagedCreators(): Promise<ManagedCreator[]> {
       c.last_synced_at,
       (select count(*) from posts p where p.creator_id = c.id) as post_count
     from creators c
-    where c.status <> 'removed'
+    -- Removed builders are listed too, at the bottom, so a permanent removal is
+    -- visible and can be undone deliberately rather than being invisible.
     order by
-      case c.status when 'approved' then 0 else 1 end,
+      case c.status when 'approved' then 0 when 'paused' then 1 when 'guest' then 2 else 3 end,
       c.followers_count desc nulls last,
       lower(c.username) asc
   `;

@@ -30,6 +30,32 @@ const MATURITY = "24 hours";
 // producing a confident-looking number from two data points.
 const MIN_POSTS_FOR_BASELINE = 4;
 
+/**
+ * Both statuses contribute posts to the statistics. 'guest' is the author of a
+ * post added by hand who was never chosen for the ranked roster — their post is
+ * part of the corpus, they are not part of the directory.
+ */
+const CORPUS_STATUSES = ["approved", "guest"];
+
+/**
+ * The two reporting ranges.
+ *
+ * All-history answers "what works", using every post ever collected. The recent
+ * window answers "what is working now", which is a different question and can
+ * disagree — a category can lead on all-history because of one old hit while
+ * having gone quiet since.
+ *
+ * Fourteen days is not arbitrary: it is the same window in which stored like
+ * counts are still being actively refreshed, so every post inside it is measured
+ * on maintained numbers rather than on whatever was true when it was first read.
+ */
+export type RankWindow = "all" | "recent";
+export const RECENT_WINDOW_DAYS = 14;
+
+export function parseWindow(raw: string | undefined): RankWindow {
+  return raw === "recent" || raw === "14d" ? "recent" : "all";
+}
+
 export type CorpusHealth = {
   creators: number;
   posts: number;
@@ -73,6 +99,7 @@ export type BreakoutRow = {
   productCategory: string | null;
   mature: boolean;
   nocodeSignal: number | null;
+  addedByHand: boolean;
 };
 
 export type NocodeSplit = {
@@ -142,9 +169,11 @@ export async function getCorpusHealth(): Promise<CorpusHealth> {
              (p.metrics_refreshed_at >= p.created_at + ${MATURITY}::interval) as mature
       from posts p
       join creators c on c.id = p.creator_id
-      where c.status = 'approved'
+      where c.status = any(${CORPUS_STATUSES})
     )
     select
+      -- The roster, not the corpus: guests contribute posts but are not builders
+      -- anyone chose to follow.
       (select count(*) from creators where status = 'approved') as creators,
       (select count(*) from base) as posts,
       (select count(*) from base where mature) as mature_posts,
@@ -182,11 +211,19 @@ export async function getCorpusHealth(): Promise<CorpusHealth> {
 }
 
 /**
- * Shared analysis base: every post of an approved builder, expressed as likes per
+ * Shared analysis base: every post of a corpus builder, expressed as likes per
  * 1,000 followers, with each builder's own median attached so a post can be
  * measured against its author rather than against the whole corpus.
+ *
+ * The window narrows which posts are REPORTED, never which posts form the
+ * baseline. A builder's median is always taken over their whole history, because
+ * a fortnight of their output is often three or four posts — too few for a median
+ * to mean anything, and using one would make the breakout multiple noisier in the
+ * exact view where it matters most. The comparison stays against how that person
+ * usually performs, while the list shows only what happened lately.
  */
-function scoredPosts(sql: ReturnType<typeof getDb>) {
+function scoredPosts(sql: ReturnType<typeof getDb>, window: RankWindow = "all") {
+  const recentOnly = window === "recent";
   return sql`
     with base as (
       select
@@ -197,7 +234,7 @@ function scoredPosts(sql: ReturnType<typeof getDb>) {
         (p.metrics_refreshed_at >= p.created_at + ${MATURITY}::interval) as mature
       from posts p
       join creators c on c.id = p.creator_id
-      where c.status = 'approved' and coalesce(c.followers_count, 0) > 0
+      where c.status = any(${CORPUS_STATUSES}) and coalesce(c.followers_count, 0) > 0
     ),
     baseline as (
       select
@@ -219,6 +256,11 @@ function scoredPosts(sql: ReturnType<typeof getDb>) {
         end as breakout
       from base b
       left join baseline bl on bl.creator_id = b.creator_id
+      where ${
+        recentOnly
+          ? sql`b.created_at > now() - ${`${RECENT_WINDOW_DAYS} days`}::interval`
+          : sql`true`
+      }
     )
   `;
 }
@@ -350,7 +392,8 @@ function toBreakoutRow(row: Record<string, unknown>): BreakoutRow {
     artifact: row.artifact ? String(row.artifact) : null,
     productCategory: row.product_category ? String(row.product_category) : null,
     mature: row.mature === undefined ? true : Boolean(row.mature),
-    nocodeSignal: maybeNum(row.nocode_signal)
+    nocodeSignal: maybeNum(row.nocode_signal),
+    addedByHand: Boolean(row.added_by_hand)
   };
 }
 
@@ -371,19 +414,22 @@ export type PostRankMetric = "likes" | "rate";
  */
 export async function getTopPosts(
   metric: PostRankMetric,
+  window: RankWindow = "all",
   limit = 30
 ): Promise<BreakoutRow[]> {
   if (!hasDatabase()) return [];
   const sql = getDb();
   const order = metric === "likes" ? sql`s.like_count desc` : sql`s.engagement desc`;
   const rows = await sql<Array<Record<string, unknown>>>`
-    ${scoredPosts(sql)}
+    ${scoredPosts(sql, window)}
     select
       s.id, s.username, s.text, s.url, s.created_at,
       s.like_count, s.repost_count, s.followers_count,
       s.engagement, s.breakout, s.mature,
+      p.added_by_hand,
       pi.note, pi.themes, pi.artifact, pi.product_category, pi.nocode_signal
     from scored s
+    join posts p on p.id = s.id
     left join post_insights pi on pi.post_id = s.id
     where s.engagement is not null
     order by ${order}, s.created_at desc
@@ -407,12 +453,12 @@ export type CategoryRow = DimensionRow & {
  * way, and a category whose average sits far above its median is being carried by
  * a single hit rather than performing consistently.
  */
-export async function getCategoryStats(): Promise<CategoryRow[]> {
+export async function getCategoryStats(window: RankWindow = "all"): Promise<CategoryRow[]> {
   if (!hasDatabase()) return [];
   const sql = getDb();
 
   const rows = await sql<Array<Record<string, unknown>>>`
-    ${scoredPosts(sql)}
+    ${scoredPosts(sql, window)}
     select
       pi.product_category as key,
       count(*) as posts,
@@ -438,7 +484,7 @@ export async function getCategoryStats(): Promise<CategoryRow[]> {
 
   // Best examples per category, taken in one pass rather than a query per row.
   const exampleRows = await sql<Array<Record<string, unknown>>>`
-    ${scoredPosts(sql)}
+    ${scoredPosts(sql, window)}
     , ranked as (
       select
         s.id, s.username, s.text, s.url, s.created_at,

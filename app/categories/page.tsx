@@ -1,8 +1,15 @@
+import Link from "next/link";
 import { SiteNav } from "@/components/site-nav";
 import { hasDatabase } from "@/lib/db";
 import { cleanPostText, compactNumber } from "@/lib/format";
 import { productCategoryLabel } from "@/lib/mission";
-import { getCategoryStats, getCorpusHealth } from "@/lib/stats";
+import {
+  getCategoryStats,
+  getCorpusHealth,
+  parseWindow,
+  RECENT_WINDOW_DAYS,
+  type RankWindow
+} from "@/lib/stats";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +22,17 @@ export const metadata = {
 // Below this a category's numbers move too much on a single post to rank.
 const THIN_SAMPLE = 5;
 
-export default async function CategoriesPage() {
+function href(window: RankWindow) {
+  return `/categories?window=${window}`;
+}
+
+export default async function CategoriesPage({
+  searchParams
+}: {
+  searchParams: Promise<{ window?: string }>;
+}) {
+  const window = parseWindow((await searchParams).window);
+
   if (!hasDatabase()) {
     return (
       <main className="insights-shell">
@@ -25,7 +42,10 @@ export default async function CategoriesPage() {
     );
   }
 
-  const [categories, health] = await Promise.all([getCategoryStats(), getCorpusHealth()]);
+  const [categories, health] = await Promise.all([
+    getCategoryStats(window),
+    getCorpusHealth()
+  ]);
 
   const solid = categories.filter((row) => row.posts >= THIN_SAMPLE);
   const thin = categories.filter((row) => row.posts < THIN_SAMPLE);
@@ -46,6 +66,30 @@ export default async function CategoriesPage() {
           answers is which kinds of thing an audience rewards — and therefore which kinds an
           ordinary person would get the most out of being able to make.
         </p>
+
+        <div className="metric-toggle" role="group" aria-label="Time range">
+          <Link
+            href={href("all")}
+            className={window === "all" ? "metric-option active" : "metric-option"}
+            aria-current={window === "all" ? "true" : undefined}
+          >
+            All history
+          </Link>
+          <Link
+            href={href("recent")}
+            className={window === "recent" ? "metric-option active" : "metric-option"}
+            aria-current={window === "recent" ? "true" : undefined}
+          >
+            Last {RECENT_WINDOW_DAYS} days
+          </Link>
+        </div>
+
+        <p className="footnote toggle-note">
+          {window === "all"
+            ? "Every classified post ever collected. More evidence per category, so this is the read to trust when the two ranges disagree."
+            : `Only posts from the last ${RECENT_WINDOW_DAYS} days. This is what is landing now, but each category has far fewer posts behind it, so expect more categories below the reliability line.`}
+        </p>
+
         <div className="health-strip">
           <div>
             <strong>{categories.length}</strong>
@@ -90,7 +134,8 @@ export default async function CategoriesPage() {
             <p>
               Categories with fewer than {THIN_SAMPLE} posts sit below the line. They are shown
               because their absence is itself informative, but their numbers should not be read as
-              a ranking.
+              a ranking. The {RECENT_WINDOW_DAYS}-day view pushes more categories below that line,
+              which is a property of the shorter range rather than of the categories.
             </p>
           </div>
         </div>
@@ -158,7 +203,11 @@ export default async function CategoriesPage() {
         </div>
 
         {categories.length ? null : (
-          <p className="empty-note">No categorised posts yet. Runs with the next enrichment pass.</p>
+          <p className="empty-note">
+            {window === "recent"
+              ? `No classified posts in the last ${RECENT_WINDOW_DAYS} days yet.`
+              : "No categorised posts yet. Runs with the next enrichment pass."}
+          </p>
         )}
       </section>
 

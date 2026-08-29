@@ -52,6 +52,17 @@ function decodeCredentials(header: string) {
   }
 }
 
+/**
+ * The tier a request authenticated as, passed to the app so pages can hide
+ * curation controls from read-only viewers.
+ *
+ * This header is always overwritten, never merely read, so a caller cannot grant
+ * itself the admin tier by sending it. Server actions re-check it rather than
+ * trusting the rendered UI, since an action is reachable without rendering the
+ * page that hid its button.
+ */
+export const ROLE_HEADER = "x-radar-role";
+
 type Credential = { username: string; password: string };
 
 function credential(userKey: string, passKey: string): Credential | null {
@@ -71,6 +82,14 @@ function accepts(supplied: Credential, allowed: Credential[]) {
     if (usernameOk && passwordOk) ok = true;
   }
   return ok;
+}
+
+function allow(request: NextRequest, role: "admin" | "viewer") {
+  const headers = new Headers(request.headers);
+  headers.set(ROLE_HEADER, role);
+  const response = NextResponse.next({ request: { headers } });
+  response.headers.set("X-Robots-Tag", "noindex, nofollow");
+  return response;
 }
 
 export function proxy(request: NextRequest) {
@@ -103,9 +122,10 @@ export function proxy(request: NextRequest) {
     return new NextResponse("Authentication required.", CHALLENGE);
   }
 
-  const response = NextResponse.next();
-  response.headers.set("X-Robots-Tag", "noindex, nofollow");
-  return response;
+  // Admin is decided by the admin pair specifically, not by having got in: a
+  // holder of the shared viewing password must not be able to edit the directory.
+  const isAdmin = admin !== null && accepts(supplied, [admin]);
+  return allow(request, isAdmin ? "admin" : "viewer");
 }
 
 export const config = {

@@ -166,7 +166,9 @@ async function refreshStaleProfiles() {
   const sql = getDb();
   const stale = await sql<{ username: string }[]>`
     select username from creators
-    where status = 'approved'
+    -- Guests are included: their posts sit in the same rankings, and likes per
+    -- 1,000 followers is only meaningful if the follower count is current.
+    where status in ('approved', 'guest')
       and (
         x_user_id is null
         or last_synced_at is null
@@ -221,16 +223,24 @@ export async function syncCreatorsAndPosts(cycleId: string | null = null) {
         const posts = await getUserPosts(creator.x_user_id, latest?.id ?? null);
 
         for (const post of posts) {
+          // insert-select rather than insert-values so the blocklist is consulted
+          // by the database itself. A post the owner deleted by hand is still in
+          // the author's timeline, so every cycle would otherwise put it back.
           await sql`
             insert into posts (
               id, creator_id, text, url, created_at,
               like_count, repost_count, reply_count, fetched_at, metrics_refreshed_at
-            ) values (
-              ${post.id}, ${creator.id}, ${post.text},
-              ${`https://x.com/${creator.username}/status/${post.id}`}, ${post.created_at},
-              ${post.public_metrics?.like_count ?? 0},
-              ${post.public_metrics?.retweet_count ?? 0},
-              ${post.public_metrics?.reply_count ?? 0}, now(), now()
+            )
+            select
+              ${post.id}::text, ${creator.id}::uuid, ${post.text}::text,
+              ${`https://x.com/${creator.username}/status/${post.id}`}::text,
+              ${post.created_at}::timestamptz,
+              ${post.public_metrics?.like_count ?? 0}::integer,
+              ${post.public_metrics?.retweet_count ?? 0}::integer,
+              ${post.public_metrics?.reply_count ?? 0}::integer,
+              now(), now()
+            where not exists (
+              select 1 from blocked_posts b where b.post_id = ${post.id}
             )
             on conflict (id) do update set
               text = excluded.text,

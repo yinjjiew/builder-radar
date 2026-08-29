@@ -17,21 +17,23 @@ The project is ready for GitHub and Vercel. It uses:
 | Path | What it answers |
 |---|---|
 | `/` | Who is in the directory, ranked by followers |
-| `/posts` | The 30 strongest posts, by raw likes or by likes per 1,000 followers |
-| `/categories` | Which kinds of product earn attention, with the best examples |
+| `/posts` | The 30 strongest posts, by raw likes or by likes per 1,000 followers, over all history or the last 14 days |
+| `/categories` | Which kinds of product earn attention, with the best examples, over all history or the last 14 days |
 | `/network` | Who the directory follows, and who to add next |
 | `/insights` | The demand brief and the statistics behind it, with 8 saved versions |
 
 ## Product behavior
 
-- Thirty approved creators are seeded automatically, in four curated cohorts
-  (`no-code`, `indie`, `craft`, `3d`) recorded on `creators.bucket`.
+- Fifty approved creators are seeded automatically, in five curated cohorts
+  (`no-code`, `indie`, `ai-creator`, `craft`, `3d`) recorded on `creators.bucket`.
 - Creators are ranked by current X follower count.
 - Five recent original posts are shown for each creator; replies and reposts are excluded.
 - Posts and like counts update every six hours. Follower counts refresh daily —
   see [X API cost](#x-api-cost) for why that split exists.
-- Builders are curated by hand at `/admin`: add by username, pause, or remove.
+- Builders are curated by hand from `/` or `/admin`: add by handle or link, pause, or remove.
+- Individual posts are curated from `/posts`: add by link, or delete permanently.
 - Paused and removed builders stay that way; seeding never resurrects them.
+- Both rank pages report two ranges: all history, and the last 14 days.
 - The follow graph is a **manual, budgeted pass**, not a cron job, because it is
   the one genuinely expensive call here.
 
@@ -40,12 +42,18 @@ The project is ready for GitHub and Vercel. It uses:
 The first ten builders were craft and 3D specialists, and every brief written
 against them reported the same limitation: almost no posts aimed at non-technical
 people. That directory can say what other engineers admire but very little about
-what an ordinary person would want to build. The roster now adds people shipping
-prompt-to-app products and solo builders working closer to product and marketing
-than to engineering.
+what an ordinary person would want to build.
+
+The roster is therefore weighted deliberately. Of fifty builders, thirty-four are
+in cohorts whose audience is not primarily engineers — people building no-code and
+prompt-to-app tools (`no-code`, 17), solo shippers selling to ordinary customers
+(`indie`, 13), and people teaching AI tooling to non-programmers (`ai-creator`, 4).
+The remaining sixteen are craft and 3D specialists, kept because they are the best
+available read on what makes a finished thing travel.
 
 Every handle in `lib/seed-creators.ts` was verified against the X API before being
-added. Four plausible-looking handles turned out not to exist.
+added. Fourteen plausible-looking handles across the two rounds turned out not to
+exist or belonged to the wrong person.
 
 ## Demand analysis at `/insights`
 
@@ -284,7 +292,7 @@ run per day, and any more frequent expression fails at deploy time with
 daily times such as `0 5 * * *`, `10 5 * * *`, `35 5 * * *`, or point an external
 scheduler at the routes.
 
-After deployment, the first post cron populates the thirty seeded profiles and their posts.
+After deployment, the first post cron populates the fifty seeded profiles and their posts.
 
 ## Trigger the pipeline manually
 
@@ -353,9 +361,41 @@ The browser asks for `ADMIN_USERNAME` and `ADMIN_PASSWORD`. The page offers:
 - **Pause** — hides a builder from the public directory and stops syncing their posts,
   without discarding the posts already stored.
 - **Remove** — hides them permanently. Seeded builders will not come back.
+- **Removed builders** — what has been removed, and the only place to restore one.
+- **Deleted posts** — the post blocklist, and the only place to unblock one.
 - **Discovered candidates** — the review queue, populated by a follow-graph pass.
   The same people appear on `/network`, ranked by how many of the directory follow
   them.
+
+### Curating from the pages themselves
+
+With admin credentials, `/` and `/posts` render their own controls, so curation
+happens where the content is rather than in a separate screen:
+
+- `/` — **Add a builder**, and **Remove** on each card.
+- `/posts` — **Add a post** by link, and **Delete** on each row.
+
+Both destructive controls ask for confirmation first, because both are permanent.
+
+Two properties are worth knowing:
+
+- **Deleting a post is permanent.** The id goes into `blocked_posts`, and the sync
+  consults that table when inserting. Without it, a deleted post would return
+  within six hours, because it is still in its author's timeline.
+- **Adding a post can pull in a non-roster author.** Likes per 1,000 followers needs
+  a follower count, so the author is stored as a `guest`: their post counts towards
+  the statistics, but they do not appear as a builder and their timeline is never
+  synced. The roster stays exactly what was chosen for it.
+
+Changes take effect on the rank pages immediately, since those query the database
+on each request. The network graph and the insights brief are rebuilt on the
+six-hour cycle rather than on edit, because both are expensive to produce.
+
+Controls are gated on the credential tier, and the gate is enforced twice: the
+pages hide the controls from holders of the read-only site password, and every
+mutating server action independently re-checks the tier. The second check is the
+one that matters, since a server action is an HTTP endpoint that can be called
+without rendering the page that hid its button.
 
 ## X API cost
 
@@ -370,14 +410,18 @@ request** — this single fact drives every design decision below.
 | User read | $0.010 |
 | Following/followers read | $0.010 |
 
-### The six-hour cycle: roughly $25/month
+### The six-hour cycle: roughly $40/month at fifty builders
 
 Each run reads any genuinely new posts (`getUserPosts` passes `since_id`) and
 re-reads metrics for posts that have just passed the settling age, capped at 100
 posts per run and batched 100 ids per request.
 
+Growing the roster from thirty to fifty raised this by roughly two thirds. The
+metrics refresh is unaffected — it is capped per run, not per builder — so the
+increase is in new-post reads and daily profile reads.
+
 **Profile reads are refreshed daily, not every six hours.** At $0.010 each,
-thirty profiles four times a day is $36/month on its own — and follower counts do
+fifty profiles four times a day is $60/month on its own — and follower counts do
 not meaningfully move in six hours. `PROFILE_REFRESH_HOURS` in `lib/sync.ts` drops
 about three quarters of that cost and changes no number anyone looks at. Post
 fetching is unaffected because it uses the stored `x_user_id`.

@@ -512,6 +512,43 @@ footer p { color: rgba(255,255,255,.46); font-size: 12px; }
 .metric-option.active { background: var(--ink); color: var(--white); }
 .toggle-note { margin-top: 16px; color: var(--muted); font-size: 12.5px; line-height: 1.6; }
 
+/* Two toggles stack on narrow screens rather than shrinking to unreadable pills. */
+.toggle-stack { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.toggle-stack .metric-toggle { margin-top: 26px; }
+
+/* ---------- hand curation ---------- */
+
+.curate-panel { margin-bottom: 8px; }
+.curate-panel h2 { font-family: Georgia, serif; font-size: 20px; font-weight: 400; margin-bottom: 6px; }
+.curate-inline {
+  margin: 26px 0 34px; padding: 22px 24px;
+  border: 1px solid var(--line); border-radius: 14px; background: rgba(0, 0, 0, .015);
+}
+.curate-inline h3 { font-family: Georgia, serif; font-size: 19px; font-weight: 400; margin-bottom: 6px; }
+
+.inline-form { display: inline; }
+.builder-aside { display: flex; flex-direction: column; align-items: flex-end; gap: 7px; flex-shrink: 0; }
+
+/* A destructive control should be legible but never the thing the eye lands on
+   first, so it reads as plain text until hovered. */
+.danger-link {
+  background: none; border: 0; padding: 0; cursor: pointer;
+  font: inherit; font-size: 12px; color: var(--muted);
+  text-decoration: underline; text-underline-offset: 3px;
+}
+.danger-link:hover { color: #9a4c45; }
+.danger-button {
+  background: transparent; color: #9a4c45; border: 1px solid #9a4c45;
+  border-radius: 999px; padding: 8px 18px; font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.danger-button:hover { background: #9a4c45; color: var(--white); }
+
+.creator-row.status-removed { opacity: .6; }
+.creator-row.status-guest .creator-identity strong::after {
+  content: "guest"; margin-left: 8px; font-size: 10px; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--muted); font-weight: 500;
+}
+
 .rank-list { list-style: none; margin: 0; padding: 0; }
 .rank-row {
   display: grid; grid-template-columns: 46px minmax(0, 1fr) 130px;

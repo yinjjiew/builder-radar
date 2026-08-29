@@ -2,7 +2,8 @@ import Image from "next/image";
 import { ConfirmButton } from "@/components/confirm-button";
 import { removeUpAction } from "@/app/curate/actions";
 import type { Builder } from "@/lib/types";
-import { cleanPostText, compactNumber, relativeDate } from "@/lib/format";
+import { compactNumber, relativeDate } from "@/lib/format";
+import { workKindLabel } from "@/lib/mission";
 
 export function BuilderCard({
   builder,
@@ -76,10 +77,47 @@ export function BuilderCard({
 
         <p className="bio">{builder.description || "No biography available."}</p>
 
+        <div className="work-block">
+          <div className="posts-heading">
+            <span>What kinds of work they do</span>
+            {builder.lastSyncedAt ? (
+              <span>Updated {relativeDate(builder.lastSyncedAt)} ago</span>
+            ) : null}
+          </div>
+
+          {builder.workKinds.length ? (
+            <p className="work-kinds">
+              {builder.workKinds.map((kind) => (
+                <span className="work-kind" key={kind}>
+                  {workKindLabel(kind)}
+                </span>
+              ))}
+            </p>
+          ) : null}
+
+          {builder.workSummary ? (
+            <p className="work-summary">{builder.workSummary}</p>
+          ) : (
+            <div className="posts-placeholder">
+              A read of their work appears after the next enrichment run.
+            </div>
+          )}
+
+          <p className="work-activity">
+            {builder.postCount ? (
+              <>
+                {builder.postCount} post{builder.postCount === 1 ? "" : "s"} tracked
+                {builder.latestPostAt ? ` · latest ${relativeDate(builder.latestPostAt)} ago` : ""}
+              </>
+            ) : (
+              "No posts collected yet."
+            )}
+          </p>
+        </div>
         {builder.focusSummary ? (
           <div className="builder-focus">
             <p className="builder-focus-head">
-              <span>What they are building now</span>
+              <span>What they are working on right now</span>
               {builder.focusRelevance !== null ? (
                 <span className="relevance-chip">{builder.focusRelevance}/100 relevance</span>
               ) : null}
@@ -98,32 +136,6 @@ export function BuilderCard({
           </div>
         ) : null}
 
-        <div className="posts-heading">
-          <span>Recent builds</span>
-          {builder.lastSyncedAt ? <span>Updated {relativeDate(builder.lastSyncedAt)} ago</span> : null}
-        </div>
-
-        {builder.posts.length ? (
-          <ol className="post-list">
-            {builder.posts.map((post) => (
-              <li key={post.id}>
-                <a href={post.url} target="_blank" rel="noreferrer" className="post-link">
-                  <span className="post-text">{cleanPostText(post.text, 200)}</span>
-                  <span className="post-meta">
-                    <span>{relativeDate(post.createdAt)}</span>
-                    <span>♥ {compactNumber(post.likeCount)}</span>
-                    <span>↻ {compactNumber(post.repostCount)}</span>
-                    <span className="open-post">Open on X ↗</span>
-                  </span>
-                </a>
-              </li>
-            ))}
-          </ol>
-        ) : (
-          <div className="posts-placeholder">
-            Recent posts will appear after the first X sync.
-          </div>
-        )}
       </div>
     </article>
   );

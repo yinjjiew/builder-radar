@@ -1,4 +1,5 @@
 import { getDb, hasDatabase } from "@/lib/db";
+import { NOT_WORK, PRODUCT_CATEGORIES } from "@/lib/mission";
 
 /**
  * Why the numbers are shaped this way.
@@ -36,6 +37,25 @@ const MIN_POSTS_FOR_BASELINE = 4;
  * part of the corpus, they are not part of the directory.
  */
 const CORPUS_STATUSES = ["approved", "guest"];
+
+/**
+ * A ranking of posts is meant to answer "what work resonated", so a post that
+ * handed over no work does not belong in it however many likes it drew. Both
+ * rankings therefore require a category, which also excludes posts not yet
+ * tagged: an untagged post is not known to be work, and admitting it on the
+ * chance that it might be is what filled the earlier ranking with takes, replies
+ * and conference photos.
+ *
+ * The one exception is a post the owner added by hand. That is an explicit
+ * judgement that it belongs, and it should not have to wait for the next
+ * enrichment cycle to appear.
+ */
+function workPostsOnly(sql: ReturnType<typeof getDb>) {
+  return sql`(
+    p.added_by_hand
+    or (pi.product_category is not null and pi.product_category <> ${NOT_WORK})
+  )`;
+}
 
 /**
  * The two reporting ranges.
@@ -431,7 +451,7 @@ export async function getTopPosts(
     from scored s
     join posts p on p.id = s.id
     left join post_insights pi on pi.post_id = s.id
-    where s.engagement is not null
+    where s.engagement is not null and ${workPostsOnly(sql)}
     order by ${order}, s.created_at desc
     limit ${limit}
   `;
@@ -475,7 +495,11 @@ export async function getCategoryStats(window: RankWindow = "all"): Promise<Cate
       avg(pi.nocode_signal)::float8 as avg_nocode_signal
     from scored s
     join post_insights pi on pi.post_id = s.id
-    where s.mature and s.engagement is not null and pi.product_category <> 'none'
+    where s.mature and s.engagement is not null
+      -- A stale value from a superseded prompt version must not be ranked
+      -- alongside current ones, so the category must still be in the vocabulary.
+      and pi.product_category <> ${NOT_WORK}
+      and pi.product_category = any(${[...PRODUCT_CATEGORIES]})
     group by pi.product_category
     order by avg_engagement desc nulls last, posts desc
   `;
@@ -496,7 +520,11 @@ export async function getCategoryStats(window: RankWindow = "all"): Promise<Cate
         ) as rank
       from scored s
       join post_insights pi on pi.post_id = s.id
-      where s.mature and s.engagement is not null and pi.product_category <> 'none'
+      where s.mature and s.engagement is not null
+      -- A stale value from a superseded prompt version must not be ranked
+      -- alongside current ones, so the category must still be in the vocabulary.
+      and pi.product_category <> ${NOT_WORK}
+      and pi.product_category = any(${[...PRODUCT_CATEGORIES]})
     )
     select * from ranked where rank <= 3
   `;

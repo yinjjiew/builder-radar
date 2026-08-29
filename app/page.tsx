@@ -42,9 +42,10 @@ export default async function HomePage({
           <p className="eyebrow">Signals from people who ship</p>
           <h1>See what the internet’s most inventive builders are making.</h1>
           <p className="hero-description">
-            A focused feed of design engineers, creative developers, AI tool builders and
-            solo shippers—ranked by audience, updated from their latest original posts.
-            Every six hours an AI reads what each one shipped and{" "}
+            Creative studios, interactive and 3D developers, design engineers and the people
+            who make the tools they build with. Everyone here passes two tests: they build for
+            the web, and they show the result. Every six hours an AI reads what each one shipped
+            and{" "}
             <Link href="/insights" className="hero-inline-link">
               measures which of it the audience actually rewards
             </Link>
@@ -52,7 +53,6 @@ export default async function HomePage({
           </p>
           <div className="hero-stats" aria-label="Directory details">
             <div><strong>{builders.length}</strong><span>curated builders</span></div>
-            <div><strong>5</strong><span>recent posts each</span></div>
             <div><strong>6h</strong><span>refresh cycle</span></div>
             <div><strong>AI</strong><span>demand analysis</span></div>
           </div>
@@ -74,6 +74,11 @@ export default async function HomePage({
           <div>
             <p className="eyebrow">The directory</p>
             <h2>Builders, ranked by followers</h2>
+            <p className="section-note">
+              Followers set the order, not the membership. Each entry says what kinds of work
+              that builder actually does, read from their whole recent output rather than from
+              whichever few things they posted this week.
+            </p>
           </div>
           <p className="sync-note">
             {latestSync

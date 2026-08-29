@@ -6,6 +6,18 @@ export function compactNumber(value: number | null) {
   }).format(value);
 }
 
+// X serves post text HTML-escaped, so an ampersand arrives as "&amp;" and shows
+// up literally once React escapes it again on the way out.
+const ENTITIES: Record<string, string> = {
+  "&amp;": "&",
+  "&lt;": "<",
+  "&gt;": ">",
+  "&quot;": '"',
+  "&#39;": "'",
+  "&apos;": "'",
+  "&nbsp;": " "
+};
+
 /**
  * Post text arrives with t.co shortlinks that carry no meaning for a reader and
  * crowd out the words that do. Collapses whitespace too, since posts are written
@@ -14,6 +26,7 @@ export function compactNumber(value: number | null) {
 export function cleanPostText(value: string, limit = 220) {
   const cleaned = value
     .replace(/https?:\/\/t\.co\/\w+/g, "")
+    .replace(/&(?:amp|lt|gt|quot|#39|apos|nbsp);/g, (match) => ENTITIES[match] ?? match)
     .replace(/\s+/g, " ")
     .trim();
   return cleaned.length > limit ? `${cleaned.slice(0, limit).trimEnd()}…` : cleaned;

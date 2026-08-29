@@ -1,13 +1,3 @@
-export type BuilderPost = {
-  id: string;
-  text: string;
-  createdAt: string;
-  url: string;
-  likeCount: number;
-  repostCount: number;
-  replyCount: number;
-};
-
 export type Builder = {
   id: string;
   username: string;
@@ -20,7 +10,17 @@ export type Builder = {
   focusSummary: string | null;
   focusProducts: string[];
   focusRelevance: number | null;
-  posts: BuilderPost[];
+  /**
+   * What this builder makes, read from their whole recent output rather than
+   * from whatever they happened to post this week. `workKinds` uses the same
+   * vocabulary as the post categories, so a builder's stated output and the
+   * ranking of what resonates can be read against each other.
+   */
+  workKinds: string[];
+  workSummary: string | null;
+  /** Activity only: enough to see the roster is live, without quoting posts. */
+  postCount: number;
+  latestPostAt: string | null;
 };
 
 /**

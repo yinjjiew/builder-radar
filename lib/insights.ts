@@ -14,9 +14,12 @@ import {
   AUDIENCES,
   INTENTS,
   MISSION,
+  NOT_WORK,
   PRODUCT_CATEGORIES,
   PRODUCT_CATEGORY_RULES,
+  ROSTER_THEME,
   THEMES,
+  WORK_KINDS,
   type Artifact,
   type Audience,
   type Intent,
@@ -41,6 +44,8 @@ export type CreatorFocus = {
   themes: Theme[];
   relevance: number | null;
   opportunity: string;
+  workKinds: ProductCategory[];
+  workSummary: string;
   posts: PostTag[];
 };
 
@@ -67,9 +72,11 @@ export const ANALYSIS_WINDOW = 20;
  * Bumped whenever the tagging prompt or vocabulary changes. Rows tagged under an
  * older version are re-tagged, because a leaderboard built from two different
  * prompts would partly be ranking the prompt rather than the posts. Version 2
- * added product_category and the boundary rules that go with it.
+ * added product_category and the boundary rules that go with it. Version 3
+ * replaced that category set outright, so no version 2 tag survives: the values
+ * it used no longer exist.
  */
-export const PROMPT_VERSION = 2;
+export const PROMPT_VERSION = 3;
 
 const postTagSchema = {
   type: "object",
@@ -99,13 +106,24 @@ const postTagSchema = {
 const focusSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["summary", "products", "themes", "relevance", "opportunity", "posts"],
+  required: [
+    "summary",
+    "products",
+    "themes",
+    "relevance",
+    "opportunity",
+    "work_kinds",
+    "work_summary",
+    "posts"
+  ],
   properties: {
     summary: { type: "string" },
     products: { type: "array", items: { type: "string" } },
     themes: { type: "array", items: { type: "string", enum: [...THEMES] } },
     relevance: { type: "integer", minimum: 0, maximum: 100 },
     opportunity: { type: "string" },
+    work_kinds: { type: "array", items: { type: "string", enum: [...WORK_KINDS] } },
+    work_summary: { type: "string" },
     posts: { type: "array", items: postTagSchema }
   }
 } as const;
@@ -138,25 +156,30 @@ export async function summariseCreator(input: FocusInput): Promise<CreatorFocus 
   const prompt = `You are the research analyst for a founder with this goal:
 "${MISSION}"
 
-Study one builder the founder follows on X and report what that builder is actually making right now.
+To learn what people actually want built, the founder tracks a curated roster of ${ROSTER_THEME}
 
-Rules:
-- "summary" is 2 to 4 sentences on their product focus: what they build, who it is for, and the direction they are heading. Name concrete things, not adjectives. Do not describe their posting style.
-- "products" lists named products, apps, tools or projects they are visibly working on. Use the real names. Empty array if none are named.
-- "relevance" scores 0-100 how much this builder's work informs the founder's goal. A builder shipping tools that let non-coders produce software scores high. A builder doing niche low-level graphics work for other engineers scores low.
-- "opportunity" is one or two sentences of what the founder should specifically take away, learn, or steal from this builder. Be concrete and useful, not generic encouragement.
+Study one builder from that roster and report what they actually make.
+
+About this builder
+- "summary" is 2 to 4 sentences on their work: what they make, who it is for, and where they are heading. Name concrete things, not adjectives. Do not describe their posting style.
+- "products" lists named products, sites, tools or projects they are visibly working on. Real names only. Empty array if none are named.
+- "work_kinds" lists the kinds of work this builder actually does, most frequent first, at most three. Choose from the same vocabulary as post categories below. Judge it from the evidence in the posts, not from how they describe themselves: a bio saying "design engineer" while every post is a client site means client-site comes first. If the posts do not support a kind, leave it out — a short list you can defend beats a long one.
+- "work_summary" is one or two plain sentences naming the kinds of work they do and who it is for, of the form "Builds immersive sites for luxury brands and publishes the WebGL techniques behind them" or "Ships free interaction libraries other developers install". It is read next to their name by someone deciding whether to follow them, so it must be specific enough to distinguish this builder from the next one. Never restate the bio, and never comment on follower count.
+- "relevance" scores 0-100 how much watching this builder teaches the founder about what people want built on the web and what makes it resonate. Someone shipping visible web work that an ordinary person would want to make scores high. Someone posting mainly company news, industry commentary, or work with no visible result scores low, however large their following.
+- "opportunity" is one or two sentences on what the founder should take from this builder. Concrete, not encouragement.
+
+Tagging their posts
 - "posts" must contain exactly one entry for every post id given below, using the id verbatim.
-- For each post, "nocode_signal" scores 0-100 how strongly it is evidence that non-engineers want to build this kind of thing themselves.
 - "note" is a short phrase naming what was built or claimed in that post.
-- "product_category" is what kind of product the post is about. Judge the thing that was made, not the medium of the post: a video showing a game is "game". Use "none" only when there is no product at all. Categories are compared against each other across the whole corpus, so apply these boundaries exactly:
+- "nocode_signal" scores 0-100 how strongly the post is evidence that people who cannot code would want to make this kind of thing themselves.
+- "product_category" is the kind of work the post hands over. This is the dimension the whole corpus is ranked by, so consistency matters more than nuance. Follow this procedure exactly:
 ${PRODUCT_CATEGORY_RULES}
-- When a post could fit two categories, choose the one describing what the thing IS for its user, not how it was made. A polished landing page for an AI product is "website"; the AI product itself is "ai-agent". A component library demo is "ui-kit" even if the demo is beautiful.
 
 Builder: @${input.username} (${input.name})
 Followers: ${input.followersCount ?? "unknown"}
 Bio: ${input.description || "(none)"}
 
-Recent original posts:
+Recent original posts. Links are shortened by X, so a post may be a caption on a video or image you cannot see; the caption plus what you know of this builder is usually enough to tell what was handed over.
 ${postLines || "(no recent posts available)"}`;
 
   const client = getAiClient();
@@ -193,7 +216,7 @@ ${postLines || "(no recent posts available)"}`;
       id,
       themes: asEnumList(record.themes, THEMES),
       artifact: asEnum(record.artifact, ARTIFACTS, "none"),
-      productCategory: asEnum(record.product_category, PRODUCT_CATEGORIES, "none"),
+      productCategory: asEnum(record.product_category, PRODUCT_CATEGORIES, NOT_WORK),
       intent: asEnum(record.intent, INTENTS, "opinion"),
       audience: asEnum(record.audience, AUDIENCES, "mixed"),
       nocodeSignal: asScore(record.nocode_signal, 0) ?? 0,
@@ -210,6 +233,8 @@ ${postLines || "(no recent posts available)"}`;
     themes: asEnumList(parsed.themes, THEMES, 6),
     relevance: asScore(parsed.relevance),
     opportunity: asText(parsed.opportunity).slice(0, 600),
+    workKinds: asEnumList(parsed.work_kinds, WORK_KINDS, 3),
+    workSummary: asText(parsed.work_summary).slice(0, 400),
     posts: tags
   };
 }

@@ -5,12 +5,14 @@ import {
   PROMPT_VERSION,
   summariseCreator,
   writeStrategyBrief,
-  type FocusInput
+  type FocusInput,
+  type PostTag
 } from "@/lib/insights";
 import {
   artifactLabel,
   audienceLabel,
   intentLabel,
+  NOT_WORK,
   productCategoryLabel,
   themeLabel
 } from "@/lib/mission";
@@ -155,6 +157,23 @@ async function loadPosts(creatorId: string): Promise<FocusInput["posts"]> {
   }));
 }
 
+/**
+ * The kinds of work a builder does, counted from the tags on their own posts.
+ * Used only when the model declines to name any; ordered by how often each kind
+ * appears so the first one is what they mostly do.
+ */
+function dominantKinds(posts: PostTag[]) {
+  const counts = new Map<string, number>();
+  for (const post of posts) {
+    if (post.productCategory === NOT_WORK) continue;
+    counts.set(post.productCategory, (counts.get(post.productCategory) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([kind]) => kind);
+}
+
 async function enrichCreator(candidate: Candidate) {
   const sql = getDb();
   const posts = await loadPosts(candidate.id);
@@ -195,6 +214,12 @@ async function enrichCreator(candidate: Candidate) {
     `;
   }
 
+  // The model occasionally returns no work kinds for someone whose posts are
+  // plainly all one thing — a feed of untitled generative pieces, for instance.
+  // Its own per-post judgements are already the evidence for the answer, so fall
+  // back to counting them rather than leaving the directory card blank.
+  const workKinds = focus.workKinds.length ? focus.workKinds : dominantKinds(focus.posts);
+
   await sql`
     update creators set
       focus_summary = ${focus.summary},
@@ -202,6 +227,8 @@ async function enrichCreator(candidate: Candidate) {
       focus_themes = ${sql.array(focus.themes)},
       focus_relevance = ${focus.relevance},
       focus_opportunity = ${focus.opportunity},
+      work_kinds = ${sql.array(workKinds)},
+      work_summary = ${focus.workSummary || null},
       focus_latest_post_id = ${candidate.newestPostId},
       focus_updated_at = now()
     where id = ${candidate.id}

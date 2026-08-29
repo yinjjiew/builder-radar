@@ -59,12 +59,19 @@ export default async function CategoriesPage({
       <SiteNav current="/categories" />
 
       <header className="insights-header">
-        <p className="eyebrow">Product categories</p>
-        <h1>Which kinds of product actually earn attention.</h1>
+        <p className="eyebrow">Work categories</p>
+        <h1>Which kinds of work actually earn attention.</h1>
         <p className="mission-line">
-          Every post that showed a product was classified into one category. The question this
-          answers is which kinds of thing an audience rewards — and therefore which kinds an
-          ordinary person would get the most out of being able to make.
+          Every post that handed over something made is classified into exactly one kind of work.
+          The question this answers is which kinds an audience rewards — and therefore which kinds
+          an ordinary person would get the most out of being able to make.
+        </p>
+        <p className="mission-line">
+          The categories answer one question, &ldquo;what did this post hand over&rdquo;, and are
+          applied in a fixed order so that overlap resolves the same way every cycle: work
+          delivered for a client is client work whether or not it is full of 3D, and a post
+          explaining a technique is teaching whatever the technique was. Posts that handed over
+          nothing made are excluded rather than given a category of their own.
         </p>
 
         <div className="metric-toggle" role="group" aria-label="Time range">
@@ -93,11 +100,11 @@ export default async function CategoriesPage({
         <div className="health-strip">
           <div>
             <strong>{categories.length}</strong>
-            <span>categories seen</span>
+            <span>kinds of work seen</span>
           </div>
           <div>
             <strong>{categories.reduce((sum, row) => sum + row.posts, 0)}</strong>
-            <span>classified posts</span>
+            <span>work posts</span>
           </div>
           <div>
             <strong>{solid.length}</strong>
@@ -165,8 +172,11 @@ export default async function CategoriesPage({
               {ordered.map((row) => {
                 const isThin = row.posts < THIN_SAMPLE;
                 // A mean well above the median means a few strong posts are doing
-                // the work and the category is not consistently good.
-                const skewed = row.medianEngagement > 0 && row.avgEngagement / row.medianEngagement > 2;
+                // the work and the category is not consistently good. Like counts
+                // are power-law distributed, so a ratio above 2 is the norm here
+                // and flagging it flagged almost every row; the threshold marks
+                // the cases where one post genuinely carries the category.
+                const skewed = row.medianEngagement > 0 && row.avgEngagement / row.medianEngagement > 5;
                 return (
                   <tr key={row.key} className={isThin ? "thin-row" : undefined}>
                     <th scope="row">

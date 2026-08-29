@@ -20,7 +20,7 @@ export const dynamic = "force-dynamic";
 export const metadata = {
   title: "Post rank · Builder Radar",
   description:
-    "The 30 strongest posts in the directory, over all history or the last two weeks, by raw likes and by likes per 1,000 followers."
+    "The 30 strongest pieces of work in the directory, over all history or the last two weeks, by raw likes and by likes per 1,000 followers."
 };
 
 const RANK_SIZE = 30;
@@ -79,11 +79,16 @@ export default async function PostRankPage({
 
       <header className="insights-header">
         <p className="eyebrow">Post rank</p>
-        <h1>The {RANK_SIZE} strongest posts in the directory.</h1>
+        <h1>The {RANK_SIZE} strongest pieces of work in the directory.</h1>
         <p className="mission-line">
           Four views of the same corpus, and the disagreements between them are the useful part:
           raw likes measure reach, likes per 1,000 followers measure resonance, and the range
           decides whether you are asking what works or what is working now.
+        </p>
+        <p className="mission-line">
+          Only posts that handed over something made are ranked here. A post has to be classified
+          as one of the {"kinds of work"} on the category page to qualify, which keeps out takes,
+          questions, award announcements and industry news however well they performed.
         </p>
 
         <div className="toggle-stack">
@@ -193,7 +198,7 @@ export default async function PostRankPage({
                   <p className="rank-text">{cleanPostText(post.text).slice(0, 260)}</p>
 
                   <div className="rank-meta">
-                    {post.productCategory && post.productCategory !== "none" ? (
+                    {post.productCategory ? (
                       <span className="tag">{productCategoryLabel(post.productCategory)}</span>
                     ) : null}
                     {post.breakout === null ? null : (
@@ -239,8 +244,8 @@ export default async function PostRankPage({
         {posts.length ? null : (
           <p className="empty-note">
             {window === "recent"
-              ? `No posts in the last ${RECENT_WINDOW_DAYS} days yet.`
-              : "No posts collected yet."}
+              ? `No work posted in the last ${RECENT_WINDOW_DAYS} days has been classified yet.`
+              : "No classified work yet. Posts are ranked once the enrichment run has judged what each one handed over."}
           </p>
         )}
       </section>
@@ -255,6 +260,10 @@ export default async function PostRankPage({
           Posts marked <em>still climbing</em> had their like count read less than 24 hours after
           publishing. They are included rather than hidden, because an undercounted post can only
           rank lower than it deserves, never higher.
+        </p>
+        <p className="footnote">
+          A post you add by hand is ranked immediately and keeps its place whatever the classifier
+          later decides, because choosing it is itself the judgement that it belongs.
         </p>
       </footer>
     </main>

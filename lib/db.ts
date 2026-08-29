@@ -57,7 +57,10 @@ export async function getBuilders(): Promise<Builder[]> {
       focusSummary: null,
       focusProducts: [],
       focusRelevance: null,
-      posts: []
+      workKinds: [],
+      workSummary: null,
+      postCount: 0,
+      latestPostAt: null
     }));
   }
 
@@ -75,15 +78,10 @@ export async function getBuilders(): Promise<Builder[]> {
       focus_summary: string | null;
       focus_products: string[];
       focus_relevance: number | null;
-      posts: Array<{
-        id: string;
-        text: string;
-        created_at: string;
-        url: string;
-        like_count: number;
-        repost_count: number;
-        reply_count: number;
-      }>;
+      work_kinds: string[] | null;
+      work_summary: string | null;
+      post_count: string;
+      latest_post_at: Date | null;
     }>
   >`
     select
@@ -98,21 +96,18 @@ export async function getBuilders(): Promise<Builder[]> {
       c.focus_summary,
       c.focus_products,
       c.focus_relevance,
-      coalesce(
-        (
-          select json_agg(recent_posts order by recent_posts.created_at desc)
-          from (
-            select p.id, p.text, p.created_at, p.url,
-                   p.like_count, p.repost_count, p.reply_count
-            from posts p
-            where p.creator_id = c.id
-            order by p.created_at desc
-            limit 5
-          ) recent_posts
-        ),
-        '[]'::json
-      ) as posts
+      c.work_kinds,
+      c.work_summary,
+      -- The directory used to carry each builder's five newest posts. It now
+      -- describes what they build instead, so all it needs from the posts table
+      -- is proof the builder is still active.
+      coalesce(activity.post_count, 0) as post_count,
+      activity.latest_post_at
     from creators c
+    left join lateral (
+      select count(*) as post_count, max(p.created_at) as latest_post_at
+      from posts p where p.creator_id = c.id
+    ) activity on true
     where c.status = 'approved'
     order by c.followers_count desc nulls last, lower(c.username) asc
   `;
@@ -129,15 +124,10 @@ export async function getBuilders(): Promise<Builder[]> {
     focusSummary: row.focus_summary,
     focusProducts: row.focus_products ?? [],
     focusRelevance: row.focus_relevance,
-    posts: row.posts.map((post) => ({
-      id: post.id,
-      text: post.text,
-      createdAt: new Date(post.created_at).toISOString(),
-      url: post.url,
-      likeCount: post.like_count,
-      repostCount: post.repost_count,
-      replyCount: post.reply_count
-    }))
+    workKinds: row.work_kinds ?? [],
+    workSummary: row.work_summary,
+    postCount: Number(row.post_count ?? 0),
+    latestPostAt: row.latest_post_at?.toISOString() ?? null
   }));
 }
 

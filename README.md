@@ -17,17 +17,23 @@ The project is ready for GitHub and Vercel. It uses:
 | Path | What it answers |
 |---|---|
 | `/` | Who is in the directory, ranked by followers |
-| `/posts` | The 30 strongest posts, by raw likes or by likes per 1,000 followers, over all history or the last 14 days |
-| `/categories` | Which kinds of product earn attention, with the best examples, over all history or the last 14 days |
+| `/posts` | The 30 strongest **work** posts, by raw likes or by likes per 1,000 followers, over all history or the last 14 days |
+| `/categories` | Which kinds of work earn attention, with the best examples, over all history or the last 14 days |
 | `/network` | Who the directory follows, and who to add next |
 | `/insights` | The demand brief and the statistics behind it, with 8 saved versions |
 
 ## Product behavior
 
-- Fifty approved creators are seeded automatically, in five curated cohorts
-  (`no-code`, `indie`, `ai-creator`, `craft`, `3d`) recorded on `creators.bucket`.
-- Creators are ranked by current X follower count.
-- Five recent original posts are shown for each creator; replies and reposts are excluded.
+- Sixty approved creators are seeded automatically, in five curated cohorts
+  (`studio`, `creative-dev`, `design-engineer`, `tooling`, `platform`) recorded on
+  `creators.bucket`.
+- Creators are ranked by current X follower count, but follower count does not
+  decide membership — see [Why this roster](#why-this-roster).
+- Each card states **what kinds of work that builder does**, read from their whole
+  recent output. It no longer quotes their latest posts: three arbitrary posts
+  from one week is a bad basis for judging what someone makes.
+- Only posts that handed over something made are ranked; see
+  [What counts as work](#what-counts-as-work).
 - Posts and like counts update every six hours. Follower counts refresh daily —
   see [X API cost](#x-api-cost) for why that split exists.
 - Builders are curated by hand from `/` or `/admin`: add by handle or link, pause, or remove.
@@ -39,21 +45,80 @@ The project is ready for GitHub and Vercel. It uses:
 
 ### Why this roster
 
-The first ten builders were craft and 3D specialists, and every brief written
-against them reported the same limitation: almost no posts aimed at non-technical
-people. That directory can say what other engineers admire but very little about
-what an ordinary person would want to build.
+The first version of this roster was assembled by asking "is this person adjacent
+to the market?". That let in platform founders posting company news, AI
+commentators reacting to other people's releases, indie hackers posting revenue
+screenshots, and interface people posting advice rather than work. Reviewed by
+hand, **36 of 50 were removed**, including every account above 200k followers,
+and 14 were added in their place between 2k and 33k followers.
 
-The roster is therefore weighted deliberately. Of fifty builders, thirty-four are
-in cohorts whose audience is not primarily engineers — people building no-code and
-prompt-to-app tools (`no-code`, 17), solo shippers selling to ordinary customers
-(`indie`, 13), and people teaching AI tooling to non-programmers (`ai-creator`, 4).
-The remaining sixteen are craft and 3D specialists, kept because they are the best
-available read on what makes a finished thing travel.
+So membership is not decided by adjacency or by reach. `ROSTER_RULES` in
+`lib/mission.ts` holds the two questions that survived that review:
 
-Every handle in `lib/seed-creators.ts` was verified against the X API before being
-added. Fourteen plausible-looking handles across the two rounds turned out not to
-exist or belonged to the wrong person.
+1. **Do they build for the web?** Sites, web experiences, interactive and 3D
+   work, interface components, browser games, or the tools others build those
+   with. Not marketing, commentary, fundraising, or AI news.
+2. **Do they show the result?** A link, a video, a demo, a case study. Someone
+   who posts only opinions, tips or reactions does not belong here however large
+   they are.
+
+Screening applies those to evidence rather than reputation: the last five
+original posts of every candidate were read before a decision. Of ~140 handles
+considered, 23 did not exist, 37 existed but were cut, and 32 were added. Four
+recurring reasons for cutting a well-known name:
+
+- **Inactive.** A studio whose newest post is from 2023 cannot report on what is
+  being built now, whatever the back catalogue.
+- **Commentary rather than work.** Several people cut do build real things; their
+  feeds are mostly takes about building.
+- **Other people's work.** Codrops, Awwwards and siteinspire publish the best
+  index of this world, but a ranking of their posts would credit the showcase
+  rather than the builder.
+- **Product marketing.** Framer, Webflow, Rive, tldraw and GSAP post release
+  notes to an audience, which is a different act from a builder showing a result.
+
+The four `platform` accounts are the deliberate exception, kept for market
+context rather than because they post work.
+
+Every handle in `lib/seed-creators.ts` was verified against the X API before
+being added.
+
+## What counts as work
+
+The post and category rankings answer "what work resonated", so a post that
+handed over nothing does not enter them however many likes it drew. A post
+qualifies only once it has been classified as one of the eleven kinds of work; an
+untagged post is not *known* to be work, and admitting it on the chance that it
+might be is what previously filled the ranking with takes, replies and conference
+photos. About a third of the corpus classifies as `not-work`.
+
+The one exception is a post added by hand, which is ranked immediately and keeps
+its place whatever the classifier later decides — choosing it is itself the
+judgement that it belongs.
+
+### The category set
+
+`PRODUCT_CATEGORIES` in `lib/mission.ts` replaced an earlier set that could not be
+counted: it had `utility-tool`, `web-app`, `dev-tool` and `api-service` as
+separate values with no boundary between them, no value at all for the most
+common kind of work on this roster — a site built for a client — and a catch-all
+`creative-visual` that swallowed a third of the corpus.
+
+Two properties make the replacement countable, and both matter more than the
+names:
+
+- **Every value answers the same question:** what did this post hand over? Never
+  who it was for, how it was made, or how finished it is.
+- **The set is ordered and the first match wins.** Overlap is unavoidable — a
+  client site can be full of 3D, a tutorial can be about a shader — so ambiguity
+  is resolved by precedence rather than by the model's mood, which is what stops
+  the same post landing in a different bucket every cycle. Work delivered for a
+  client is `client-site` whether or not it is 3D; a post explaining a technique
+  is `teaching` whatever the technique was.
+
+The same vocabulary describes people. `creators.work_kinds` holds the kinds a
+builder actually produces, so a builder's stated output and the ranking of what
+resonates can be read against each other directly.
 
 ## Demand analysis at `/insights`
 
@@ -62,9 +127,9 @@ questions: what is this person actually building, and what does that imply for
 the goal in `lib/mission.ts`. The results appear as a summary on each directory
 card and in full on `/insights`.
 
-Each post is also tagged against a closed vocabulary — theme, artifact type,
-product category, intent, target audience, and a 0-100 score for how strongly it
-suggests non-engineers would want to build that thing. Because the vocabulary is
+Each post is also tagged against a closed vocabulary — theme, artifact type, kind
+of work, intent, target audience, and a 0-100 score for how strongly it suggests
+non-engineers would want to build that thing. Because the vocabulary is
 fixed, those tags aggregate into statistics rather than fragmenting into synonyms.
 
 **One annotator, one standard.** `PROMPT_VERSION` in `lib/insights.ts` records
@@ -74,9 +139,11 @@ leaderboard built from posts tagged by two different prompts is partly ranking t
 prompt rather than the posts, so mixing annotators to get slightly better
 individual tags would make the aggregate numbers worse.
 
-`PRODUCT_CATEGORY_RULES` in `lib/mission.ts` gives each category a written
-boundary rather than a synonym, because vague category names are the main cause of
-tags drifting between runs.
+`PRODUCT_CATEGORY_RULES` in `lib/mission.ts` hands the model an ordered decision
+procedure rather than a list of definitions — see [The category
+set](#the-category-set) for why that distinction is the whole point. Version 3 of
+the prompt replaced the vocabulary outright, so no version 2 tag survives: the
+values it used no longer exist.
 
 **Editing the goal.** `MISSION` in `lib/mission.ts` is the single place that aims
 the whole pipeline. Change it and the next enrichment run re-scores everything

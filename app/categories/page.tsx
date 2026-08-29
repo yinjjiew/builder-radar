@@ -8,6 +8,8 @@ import {
   getCorpusHealth,
   parseWindow,
   RECENT_WINDOW_DAYS,
+  type CategoryRow,
+  type PostRankMetric,
   type RankWindow
 } from "@/lib/stats";
 
@@ -16,22 +18,31 @@ export const dynamic = "force-dynamic";
 export const metadata = {
   title: "Product categories · Builder Radar",
   description:
-    "Which kinds of product earn the most attention: games, utility tools, UI kits, agents and the rest, ranked."
+    "Which kinds of work earn the most attention: games, tools, client work, 3D and the rest, ranked by likes per 1,000 followers or by raw likes."
 };
 
 // Below this a category's numbers move too much on a single post to rank.
 const THIN_SAMPLE = 5;
 
-function href(window: RankWindow) {
-  return `/categories?window=${window}`;
+function href(metric: PostRankMetric, window: RankWindow) {
+  return `/categories?by=${metric}&window=${window}`;
+}
+
+/** The two figures the active metric puts in front, and the two it demotes. */
+function figures(row: CategoryRow, metric: PostRankMetric) {
+  return metric === "likes"
+    ? { lead: row.avgLikes, leadMedian: row.medianLikes, other: row.avgEngagement, otherMedian: row.medianEngagement }
+    : { lead: row.avgEngagement, leadMedian: row.medianEngagement, other: row.avgLikes, otherMedian: row.medianLikes };
 }
 
 export default async function CategoriesPage({
   searchParams
 }: {
-  searchParams: Promise<{ window?: string }>;
+  searchParams: Promise<{ by?: string; window?: string }>;
 }) {
-  const window = parseWindow((await searchParams).window);
+  const params = await searchParams;
+  const metric: PostRankMetric = params.by === "likes" ? "likes" : "rate";
+  const window = parseWindow(params.window);
 
   if (!hasDatabase()) {
     return (
@@ -43,7 +54,7 @@ export default async function CategoriesPage({
   }
 
   const [categories, health] = await Promise.all([
-    getCategoryStats(window),
+    getCategoryStats(metric, window),
     getCorpusHealth()
   ]);
 
@@ -52,7 +63,8 @@ export default async function CategoriesPage({
   const ordered = [...solid, ...thin];
   // Scaled against reliable rows only, so a two-post category cannot set the
   // scale for everything else.
-  const peak = solid.reduce((max, row) => Math.max(max, row.avgEngagement), 0) || 1;
+  const peak = solid.reduce((max, row) => Math.max(max, figures(row, metric).lead), 0) || 1;
+  const unit = metric === "likes" ? "likes" : "per 1k";
 
   return (
     <main className="insights-shell">
@@ -75,24 +87,54 @@ export default async function CategoriesPage({
           given a category of their own. A post may carry a second tag where it genuinely handed
           over two things, in which case it counts in both categories.
         </p>
+        <p className="mission-line">
+          <strong>Games are games.</strong> A game has an objective — levels, a score, something to
+          win or lose. A scene you can drag, spin or disturb has none, and however satisfying it is
+          to poke it belongs with the 3D and generative work it is actually made of. Both are
+          interactive; only one can be finished.
+        </p>
 
-        <div className="metric-toggle" role="group" aria-label="Time range">
-          <Link
-            href={href("all")}
-            className={window === "all" ? "metric-option active" : "metric-option"}
-            aria-current={window === "all" ? "true" : undefined}
-          >
-            All history
-          </Link>
-          <Link
-            href={href("recent")}
-            className={window === "recent" ? "metric-option active" : "metric-option"}
-            aria-current={window === "recent" ? "true" : undefined}
-          >
-            Last {RECENT_WINDOW_DAYS} days
-          </Link>
+        <div className="toggle-stack">
+          <div className="metric-toggle" role="group" aria-label="Ranking metric">
+            <Link
+              href={href("rate", window)}
+              className={metric === "rate" ? "metric-option active" : "metric-option"}
+              aria-current={metric === "rate" ? "true" : undefined}
+            >
+              Likes per 1k followers
+            </Link>
+            <Link
+              href={href("likes", window)}
+              className={metric === "likes" ? "metric-option active" : "metric-option"}
+              aria-current={metric === "likes" ? "true" : undefined}
+            >
+              Raw likes
+            </Link>
+          </div>
+
+          <div className="metric-toggle" role="group" aria-label="Time range">
+            <Link
+              href={href(metric, "all")}
+              className={window === "all" ? "metric-option active" : "metric-option"}
+              aria-current={window === "all" ? "true" : undefined}
+            >
+              All history
+            </Link>
+            <Link
+              href={href(metric, "recent")}
+              className={window === "recent" ? "metric-option active" : "metric-option"}
+              aria-current={window === "recent" ? "true" : undefined}
+            >
+              Last {RECENT_WINDOW_DAYS} days
+            </Link>
+          </div>
         </div>
 
+        <p className="footnote toggle-note">
+          {metric === "rate"
+            ? "Ranked by average likes per 1,000 followers, which asks which kind of work resonates hardest relative to the audience that saw it. This is the fairer comparison, because a category posted mainly by small accounts is not penalised for it."
+            : "Ranked by average raw likes, which asks which kind of work reaches the most people. This partly ranks audience size: a category dominated by builders with large followings will lead it whether or not the work landed well for them."}
+        </p>
         <p className="footnote toggle-note">
           {window === "all"
             ? "Every classified post ever collected. More evidence per category, so this is the read to trust when the two ranges disagree."
@@ -131,11 +173,12 @@ export default async function CategoriesPage({
             </p>
           </div>
           <div>
-            <h4>Per 1,000 followers</h4>
+            <h4>Two metrics, deliberately</h4>
             <p>
-              Categories are ranked on likes per 1,000 followers, not raw likes. Otherwise the
-              ranking would just reflect which categories happen to be posted by the builders with
-              the biggest audiences.
+              Likes per 1,000 followers measures resonance and is the honest default. Raw likes
+              measures reach and largely reflects which categories the biggest accounts post in.
+              Where the two orders disagree, a category is either punching above its audience or
+              coasting on one.
             </p>
           </div>
           <div>
@@ -153,7 +196,9 @@ export default async function CategoriesPage({
       <section className="panel">
         <h3>The ranking</h3>
         <p className="panel-question">
-          Ordered by average likes per 1,000 followers. Hover any bar for the exact figure.
+          Ordered by average {metric === "likes" ? "raw likes" : "likes per 1,000 followers"}. The
+          other measure stays in the table so the two can be read against each other. Hover any bar
+          for the exact figure.
         </p>
 
         <div className="category-table-wrap">
@@ -161,10 +206,10 @@ export default async function CategoriesPage({
             <thead>
               <tr>
                 <th scope="col">Category</th>
-                <th scope="col">Avg per 1k</th>
-                <th scope="col">Median per 1k</th>
-                <th scope="col">Avg likes</th>
-                <th scope="col">Median likes</th>
+                <th scope="col">{metric === "likes" ? "Avg likes" : "Avg per 1k"}</th>
+                <th scope="col">{metric === "likes" ? "Median likes" : "Median per 1k"}</th>
+                <th scope="col">{metric === "likes" ? "Avg per 1k" : "Avg likes"}</th>
+                <th scope="col">{metric === "likes" ? "Median per 1k" : "Median likes"}</th>
                 <th scope="col">Breakout</th>
                 <th scope="col">Share of tags</th>
                 <th scope="col">n</th>
@@ -173,12 +218,17 @@ export default async function CategoriesPage({
             <tbody>
               {ordered.map((row) => {
                 const isThin = row.posts < THIN_SAMPLE;
+                const { lead, leadMedian, other, otherMedian } = figures(row, metric);
                 // A mean well above the median means a few strong posts are doing
                 // the work and the category is not consistently good. Like counts
                 // are power-law distributed, so a ratio above 2 is the norm here
                 // and flagging it flagged almost every row; the threshold marks
                 // the cases where one post genuinely carries the category.
-                const skewed = row.medianEngagement > 0 && row.avgEngagement / row.medianEngagement > 5;
+                const skewed = leadMedian > 0 && lead / leadMedian > 5;
+                const format = (value: number) =>
+                  metric === "likes" ? compactNumber(Math.round(value)) : value.toFixed(1);
+                const formatOther = (value: number) =>
+                  metric === "likes" ? value.toFixed(1) : compactNumber(Math.round(value));
                 return (
                   <tr key={row.key} className={isThin ? "thin-row" : undefined}>
                     <th scope="row">
@@ -189,21 +239,19 @@ export default async function CategoriesPage({
                       </span>
                     </th>
                     <td>
-                      <div className="bar-cell" title={`${row.avgEngagement.toFixed(2)} likes per 1k`}>
-                        <span className="bar-value">{row.avgEngagement.toFixed(1)}</span>
+                      <div className="bar-cell" title={`${lead.toFixed(2)} ${unit}`}>
+                        <span className="bar-value">{format(lead)}</span>
                         <span className="bar-track">
                           <span
                             className="bar-fill"
-                            style={{
-                              width: `${Math.min(100, (row.avgEngagement / peak) * 100)}%`
-                            }}
+                            style={{ width: `${Math.min(100, (lead / peak) * 100)}%` }}
                           />
                         </span>
                       </div>
                     </td>
-                    <td>{row.medianEngagement.toFixed(1)}</td>
-                    <td>{compactNumber(Math.round(row.avgLikes))}</td>
-                    <td>{compactNumber(Math.round(row.medianLikes))}</td>
+                    <td>{format(leadMedian)}</td>
+                    <td>{formatOther(other)}</td>
+                    <td>{formatOther(otherMedian)}</td>
                     <td>{row.medianBreakout === null ? "–" : `${row.medianBreakout.toFixed(2)}×`}</td>
                     <td>{(row.share * 100).toFixed(0)}%</td>
                     <td className={isThin ? "thin-n" : undefined}>{row.posts}</td>
@@ -229,12 +277,20 @@ export default async function CategoriesPage({
             <h3>{productCategoryLabel(row.key)}</h3>
             <div className="category-figures">
               <div>
-                <strong>{row.avgEngagement.toFixed(1)}</strong>
-                <span>avg per 1k</span>
+                <strong>
+                  {metric === "likes"
+                    ? compactNumber(Math.round(row.avgLikes))
+                    : row.avgEngagement.toFixed(1)}
+                </strong>
+                <span>avg {unit}</span>
               </div>
               <div>
-                <strong>{compactNumber(Math.round(row.avgLikes))}</strong>
-                <span>avg likes</span>
+                <strong>
+                  {metric === "likes"
+                    ? row.avgEngagement.toFixed(1)
+                    : compactNumber(Math.round(row.avgLikes))}
+                </strong>
+                <span>avg {metric === "likes" ? "per 1k" : "likes"}</span>
               </div>
               <div>
                 <strong>{row.posts}</strong>
@@ -255,7 +311,11 @@ export default async function CategoriesPage({
           ) : null}
 
           {row.examples.length ? (
-            <ul className="example-list">
+            <>
+              <p className="panel-question">
+                The strongest three by {metric === "likes" ? "raw likes" : "likes per 1,000 followers"}.
+              </p>
+              <ul className="example-list">
               {row.examples.map((post) => (
                 <li key={post.id}>
                   <div className="example-head">
@@ -263,7 +323,9 @@ export default async function CategoriesPage({
                       @{post.username}
                     </a>
                     <span>
-                      {post.engagement.toFixed(1)} per 1k · {compactNumber(post.likeCount)} likes
+                      {metric === "likes"
+                        ? `${compactNumber(post.likeCount)} likes · ${post.engagement.toFixed(1)} per 1k`
+                        : `${post.engagement.toFixed(1)} per 1k · ${compactNumber(post.likeCount)} likes`}
                       {post.breakout === null ? "" : ` · ${post.breakout.toFixed(1)}× their median`}
                     </span>
                   </div>
@@ -280,7 +342,8 @@ export default async function CategoriesPage({
                   </div>
                 </li>
               ))}
-            </ul>
+              </ul>
+            </>
           ) : (
             <p className="empty-note">No examples yet.</p>
           )}

@@ -473,10 +473,22 @@ export type CategoryRow = DimensionRow & {
  * usually means, but at these sample sizes one viral post drags an average a long
  * way, and a category whose average sits far above its median is being carried by
  * a single hit rather than performing consistently.
+ *
+ * The metric changes the order and the examples, not the membership. Ranking by
+ * likes per 1,000 followers asks which kind of work resonates; ranking by raw
+ * likes asks which kind reaches the most people, and mostly reports which kinds
+ * happen to be posted by the builders with the largest audiences. Both are
+ * offered because the disagreement between them is the interesting part.
  */
-export async function getCategoryStats(window: RankWindow = "all"): Promise<CategoryRow[]> {
+export async function getCategoryStats(
+  metric: PostRankMetric = "rate",
+  window: RankWindow = "all"
+): Promise<CategoryRow[]> {
   if (!hasDatabase()) return [];
   const sql = getDb();
+  const byLikes = metric === "likes";
+  const order = byLikes ? sql`avg_likes desc nulls last` : sql`avg_engagement desc nulls last`;
+  const exampleOrder = byLikes ? sql`s.like_count desc` : sql`s.engagement desc`;
 
   const rows = await sql<Array<Record<string, unknown>>>`
     ${scoredPosts(sql, window)}
@@ -507,7 +519,7 @@ export async function getCategoryStats(window: RankWindow = "all"): Promise<Cate
       -- current ones, so the category must still be in the vocabulary.
       and cat = any(${[...WORK_KINDS]})
     group by cat
-    order by avg_engagement desc nulls last, posts desc
+    order by ${order}, posts desc
   `;
 
   const totalPosts = rows.reduce((sum, row) => sum + num(row.posts), 0);
@@ -522,7 +534,7 @@ export async function getCategoryStats(window: RankWindow = "all"): Promise<Cate
         s.engagement, s.breakout, s.mature,
         pi.note, pi.themes, pi.artifact, pi.categories, pi.nocode_signal,
         cat as category_key,
-        row_number() over (partition by cat order by s.engagement desc) as rank
+        row_number() over (partition by cat order by ${exampleOrder}) as rank
       from scored s
       join post_insights pi on pi.post_id = s.id
       cross join lateral unnest(pi.categories) as cat

@@ -137,11 +137,11 @@ export type ProductCategory = (typeof PRODUCT_CATEGORIES)[number];
 export const PRODUCT_CATEGORY_LABELS: Record<ProductCategory, string> = {
   teaching: "Teaching the craft",
   "client-work": "Client & brand work",
-  game: "Games & playable toys",
+  game: "Games",
   "utility-tool": "Tools that get something done",
   "own-product": "Their own site or product",
   "interface-craft": "Interface & UI components",
-  "interactive-3d": "Interactive 3D & visuals",
+  "interactive-3d": "Interactive 3D, visuals & toys",
   "not-work": "Not work"
 };
 
@@ -216,8 +216,12 @@ beat later ones even when a later one also seems to apply.
    company name, an award for a named brand project. Choose this however the work
    was built, including when it is heavily 3D or animated, because who it was for
    is the most reliable fact about it.
-4. game — something playable, made to be played. A game, a puzzle, or a toy with
-   no purpose beyond messing with it.
+4. game — a game. Something with rules and an objective that a person plays:
+   levels, a score, a win or a lose, a puzzle to solve, a character to control,
+   an opponent to beat. The test is whether it can be played to completion or to
+   failure. A scene you can drag, spin, click or disturb has no objective and is
+   not a game however satisfying it is to poke — that is rule 8. Both are
+   interactive; only one can be won.
 5. utility-tool — the thing exists to get something done. Anything someone opens
    to produce an outcome: a utility, an editor, a generator, a converter, a
    playground, a dashboard, an app that saves someone time at work or in daily
@@ -243,8 +247,11 @@ beat later ones even when a later one also seems to apply.
 8. interactive-3d — the artifact is a scene or a visual, shown for what it looks
    like rather than for what it does: a 3D scene, a shader, a simulation, a
    particle or fluid study, a generative or audiovisual piece, a WebGL
-   experiment, or a data-driven visual made to be looked at and explored. If
-   there is no interface and no task, and the point is the image, it is this.
+   experiment, or a data-driven visual made to be looked at and explored. Toys
+   belong here too — a blob that follows the cursor, a cloth you can pull, a
+   scene you can throw things around in. Being able to touch it does not make it
+   a game; there is nothing to win. If there is no interface and no task, and the
+   point is the image, it is this.
 
 Choose exactly one, always. If two rules seem to fit, the earlier one wins; that
 is what the order is for, and hedging is what made an earlier pass of this corpus
@@ -330,7 +337,7 @@ export const WORK_KIND_LABELS: Record<ProductCategory, string> = {
   "utility-tool": "tools",
   "own-product": "own products",
   "interface-craft": "interface & UI",
-  "interactive-3d": "3D & visuals",
+  "interactive-3d": "3D, visuals & toys",
   "not-work": "unclear"
 };
 

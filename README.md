@@ -19,7 +19,7 @@ The project is ready for GitHub and Vercel. It uses:
 |---|---|
 | `/` | Who is in the directory, ranked by followers |
 | `/posts` | The 30 strongest **work** posts, by raw likes or by likes per 1,000 followers, over all history or the last 14 days |
-| `/categories` | Which kinds of work earn attention, with the best examples, over all history or the last 14 days |
+| `/categories` | Which kinds of work earn attention, with the best examples, by raw likes or by likes per 1,000 followers, over all history or the last 14 days |
 | `/insights` | The demand brief and the statistics behind it, with 8 saved versions |
 | `/review` | Every collected post with the category it was filed under, editable in place (admin only) |
 
@@ -43,7 +43,8 @@ The project is ready for GitHub and Vercel. It uses:
   remove live on `/admin`.
 - Individual posts are curated from `/posts`: add by link, or delete permanently.
 - Paused and removed builders stay that way; seeding never resurrects them.
-- Both rank pages report two ranges: all history, and the last 14 days.
+- Both rank pages report two metrics and two ranges: raw likes or likes per 1,000
+  followers, over all history or the last 14 days.
 
 ### Why this roster
 
@@ -122,11 +123,11 @@ The set, in precedence order:
 |---|---|
 | `teaching` | The thing handed over is the explanation: tutorial, breakdown, course, stream, talk |
 | `client-work` | Made for a client, brand or employer, however it was built |
-| `game` | Something playable, made to be played |
+| `game` | A game: rules and an objective, something that can be won or lost |
 | `utility-tool` | Exists to get something done: utility, editor, generator, dashboard, or a library that does that job for people who write code |
 | `own-product` | The author's own presence or property: portfolio, studio site, personal site, their own launch |
 | `interface-craft` | The artifact is a piece of interface — a reusable component, a design system, a transition, a hover or scroll behaviour. The still thing and its behaviour are the same kind of work |
-| `interactive-3d` | The artifact is a scene or visual, shown for what it looks like: 3D, shaders, simulations, generative and audiovisual pieces |
+| `interactive-3d` | The artifact is a scene or visual, shown for what it looks like: 3D, shaders, simulations, generative and audiovisual pieces, and interactive toys |
 | `not-work` | Handed over nothing made. Stored as an empty tag list, not as a value |
 
 Two properties make the set countable, and both matter more than the names:
@@ -152,6 +153,13 @@ reader will test:
 - **A UI component and the way it moves are one category.** `interface-craft`
   covers both, and beats `interactive-3d` whenever what is shown is part of an
   interface, even if it is rendered with WebGL.
+- **A toy is not a game.** `game` requires an objective: levels, a score,
+  something to win or lose, a puzzle to solve. A scene you can drag, spin or
+  disturb has none of that and files as `interactive-3d`, next to the shaders and
+  simulations it is actually made of. The earlier wording said "a game, a puzzle,
+  or a toy with no purpose beyond messing with it", which put two unlike things in
+  one bucket and made the smallest category on the site harder to read than any
+  other.
 
 **A post may carry two tags, and almost never should.** The model is only ever
 asked for one; the second slot exists for the owner, who is the one person able to
@@ -203,7 +211,8 @@ procedure rather than a list of definitions — see [The category
 set](#the-category-set) for why that distinction is the whole point. Version 3
 replaced the vocabulary outright. Version 4 merged it to seven values and
 reordered them, which changes real judgements and not only names: a builder's own
-utility now files as a tool rather than as their own product.
+utility now files as a tool rather than as their own product. Version 5 split
+games from toys.
 
 A vocabulary change is applied in two steps rather than one. The old values are
 first remapped in SQL, because every one of them maps onto exactly one new value,

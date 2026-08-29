@@ -80,8 +80,11 @@ export const ANALYSIS_WINDOW = 20;
  * replaced that category set outright. Version 4 merged it down to seven values
  * and reordered them, which changes real judgements and not only names: a
  * builder's own utility now files as a tool rather than as their own product.
+ * Version 5 split games from toys: 'game' now requires an objective that can be
+ * won or lost, and everything you can merely poke at moved to interactive-3d,
+ * where it sits next to the scenes it is actually made of.
  */
-export const PROMPT_VERSION = 4;
+export const PROMPT_VERSION = 5;
 
 const postTagSchema = {
   type: "object",

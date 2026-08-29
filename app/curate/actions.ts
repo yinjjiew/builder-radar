@@ -1,7 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import {
   addPostByLink,
   addUpByLink,
@@ -11,7 +10,7 @@ import {
   setCreatorTags,
   setPostCategories,
   unblockPost,
-  type CurateResult
+  type CurateResult,
 } from "@/lib/curate";
 import { requireAdmin } from "@/lib/role";
 
@@ -33,8 +32,9 @@ import { requireAdmin } from "@/lib/role";
  */
 const PATHS = ["/", "/posts", "/categories", "/review", "/admin"];
 
-function refresh() {
+function refresh<T extends CurateResult>(result: T): T {
   for (const path of PATHS) revalidatePath(path);
+  return result;
 }
 
 /**
@@ -51,85 +51,87 @@ function tagsFrom(formData: FormData) {
 }
 
 /**
- * Feedback travels in the query string because these forms are plain server
- * actions with no client state. `redirect` throws, so it must run after the work
- * and outside any try block.
+ * Each action returns its outcome instead of redirecting with it. The caller
+ * renders that string beside the control through `ActionForm`, which is what
+ * keeps a save from scrolling the page; see the note there.
  */
-function finish(result: CurateResult, returnTo: string): never {
-  refresh();
-  const key = result.ok ? "done" : "error";
-  const separator = returnTo.includes("?") ? "&" : "?";
-  redirect(`${returnTo}${separator}${key}=${encodeURIComponent(result.message)}`);
-}
 
-function target(formData: FormData, fallback: string) {
-  const raw = String(formData.get("returnTo") ?? "").trim();
-  // Only same-site paths: a form field must not be able to bounce the owner to
-  // another origin after an action.
-  if (!raw.startsWith("/") || raw.startsWith("//")) return fallback;
-  return raw;
-}
-
-export async function deletePostAction(formData: FormData) {
+export async function deletePostAction(
+  _previous: CurateResult | null,
+  formData: FormData,
+): Promise<CurateResult> {
   await requireAdmin();
   const postId = String(formData.get("postId") ?? "").trim();
-  const returnTo = target(formData, "/posts");
-  if (!postId) finish({ ok: false, message: "No post specified." }, returnTo);
-  finish(await blockPost(postId), returnTo);
+  if (!postId) return { ok: false, message: "No post specified." };
+  return refresh(await blockPost(postId));
 }
 
-export async function addPostAction(formData: FormData) {
+export async function addPostAction(
+  _previous: CurateResult | null,
+  formData: FormData,
+): Promise<CurateResult> {
   await requireAdmin();
   const link = String(formData.get("link") ?? "");
-  const returnTo = target(formData, "/posts");
-  finish(await addPostByLink(link), returnTo);
+  return refresh(await addPostByLink(link));
 }
 
-export async function unblockPostAction(formData: FormData) {
+export async function unblockPostAction(
+  _previous: CurateResult | null,
+  formData: FormData,
+): Promise<CurateResult> {
   await requireAdmin();
   const postId = String(formData.get("postId") ?? "").trim();
-  const returnTo = target(formData, "/admin");
-  if (!postId) finish({ ok: false, message: "No post specified." }, returnTo);
-  finish(await unblockPost(postId), returnTo);
+  if (!postId) return { ok: false, message: "No post specified." };
+  return refresh(await unblockPost(postId));
 }
 
-export async function addUpAction(formData: FormData) {
+export async function addUpAction(
+  _previous: CurateResult | null,
+  formData: FormData,
+): Promise<CurateResult> {
   await requireAdmin();
   const link = String(formData.get("link") ?? "");
   const note = String(formData.get("note") ?? "");
-  const returnTo = target(formData, "/");
-  finish(await addUpByLink(link, tagsFrom(formData), note), returnTo);
+  return refresh(await addUpByLink(link, tagsFrom(formData), note));
 }
 
-export async function setCreatorTagsAction(formData: FormData) {
+export async function setCreatorTagsAction(
+  _previous: CurateResult | null,
+  formData: FormData,
+): Promise<CurateResult> {
   await requireAdmin();
   const creatorId = String(formData.get("creatorId") ?? "").trim();
   const note = String(formData.get("note") ?? "");
-  const returnTo = target(formData, "/");
-  if (!creatorId) finish({ ok: false, message: "No builder specified." }, returnTo);
-  finish(await setCreatorTags(creatorId, tagsFrom(formData), note), returnTo);
+  if (!creatorId) return { ok: false, message: "No builder specified." };
+  return refresh(await setCreatorTags(creatorId, tagsFrom(formData), note));
 }
 
-export async function setPostCategoriesAction(formData: FormData) {
+export async function setPostCategoriesAction(
+  _previous: CurateResult | null,
+  formData: FormData,
+): Promise<CurateResult> {
   await requireAdmin();
   const postId = String(formData.get("postId") ?? "").trim();
-  const returnTo = target(formData, "/review");
-  if (!postId) finish({ ok: false, message: "No post specified." }, returnTo);
-  finish(await setPostCategories(postId, tagsFrom(formData)), returnTo);
+  if (!postId) return { ok: false, message: "No post specified." };
+  return refresh(await setPostCategories(postId, tagsFrom(formData)));
 }
 
-export async function removeUpAction(formData: FormData) {
+export async function removeUpAction(
+  _previous: CurateResult | null,
+  formData: FormData,
+): Promise<CurateResult> {
   await requireAdmin();
   const creatorId = String(formData.get("creatorId") ?? "").trim();
-  const returnTo = target(formData, "/");
-  if (!creatorId) finish({ ok: false, message: "No builder specified." }, returnTo);
-  finish(await removeUp(creatorId), returnTo);
+  if (!creatorId) return { ok: false, message: "No builder specified." };
+  return refresh(await removeUp(creatorId));
 }
 
-export async function restoreUpAction(formData: FormData) {
+export async function restoreUpAction(
+  _previous: CurateResult | null,
+  formData: FormData,
+): Promise<CurateResult> {
   await requireAdmin();
   const creatorId = String(formData.get("creatorId") ?? "").trim();
-  const returnTo = target(formData, "/admin");
-  if (!creatorId) finish({ ok: false, message: "No builder specified." }, returnTo);
-  finish(await restoreUp(creatorId), returnTo);
+  if (!creatorId) return { ok: false, message: "No builder specified." };
+  return refresh(await restoreUp(creatorId));
 }

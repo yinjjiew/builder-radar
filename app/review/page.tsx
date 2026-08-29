@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { ActionForm } from "@/components/action-form";
 import { SiteNav } from "@/components/site-nav";
 import { TagSlots } from "@/components/tag-slots";
 import { setPostCategoriesAction } from "@/app/curate/actions";
@@ -35,8 +36,6 @@ type Params = {
   sort?: string;
   page?: string;
   author?: string;
-  done?: string;
-  error?: string;
 };
 
 function link(params: Params) {
@@ -77,7 +76,6 @@ export default async function ReviewPage({ searchParams }: { searchParams: Promi
     getReviewAuthors()
   ]);
 
-  const returnTo = link({ filter, sort, author, page: String(page) });
   const filters = [
     { key: "all", label: "Everything", count: counts.total },
     ...WORK_KINDS.map((kind) => ({
@@ -92,9 +90,6 @@ export default async function ReviewPage({ searchParams }: { searchParams: Promi
   return (
     <main className="insights-shell">
       <SiteNav current="/review" />
-
-      {params.done ? <div className="notice notice-success">{params.done}</div> : null}
-      {params.error ? <div className="notice notice-error">{params.error}</div> : null}
 
       <header className="insights-header">
         <p className="eyebrow">Review</p>
@@ -243,18 +238,17 @@ export default async function ReviewPage({ searchParams }: { searchParams: Promi
                 </div>
               </div>
 
-              <form action={setPostCategoriesAction} className="review-form">
-                <input type="hidden" name="postId" value={post.id} />
-                <input type="hidden" name="returnTo" value={returnTo} />
-                <TagSlots
+                      <ActionForm action={setPostCategoriesAction} className="review-form">
+                        <input type="hidden" name="postId" value={post.id} />
+                        <TagSlots
                   selected={post.categories}
                   idPrefix={`post-${post.id}`}
                   primaryEmptyLabel="Not work"
                 />
-                <button type="submit" className="approve-button">
-                  Save
-                </button>
-              </form>
+                        <button type="submit" className="approve-button">
+                          Save
+                        </button>
+                      </ActionForm>
             </li>
           ))}
         </ul>

@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { getManagedCreators, hasDatabase } from "@/lib/db";
 import { setCreatorStatus } from "@/app/admin/actions";
+import { ActionForm } from "@/components/action-form";
 import { ConfirmButton } from "@/components/confirm-button";
 import { restoreUpAction, unblockPostAction } from "@/app/curate/actions";
 import { getBlockedPosts } from "@/lib/curate";
@@ -9,19 +10,7 @@ import { compactNumber } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
-type AdminSearchParams = Promise<{
-  added?: string;
-  error?: string;
-  done?: string;
-}>;
-
-export default async function AdminPage({
-  searchParams
-}: {
-  searchParams: AdminSearchParams;
-}) {
-  const { added, error, done } = await searchParams;
-
+export default async function AdminPage() {
   if (!hasDatabase()) {
     return (
       <main className="admin-shell">
@@ -57,10 +46,6 @@ export default async function AdminPage({
         </div>
         <Link href="/">View public directory</Link>
       </header>
-
-      {added ? <div className="notice notice-success">{added}</div> : null}
-      {done ? <div className="notice notice-success">{done}</div> : null}
-      {error ? <div className="notice notice-error">{error}</div> : null}
 
       <section className="admin-section">
         <h2>Add a builder</h2>
@@ -109,7 +94,7 @@ export default async function AdminPage({
                 </div>
 
                 <div className="creator-controls">
-                  <form action={setCreatorStatus}>
+                  <ActionForm action={setCreatorStatus}>
                     <input type="hidden" name="id" value={creator.id} />
                     <input
                       type="hidden"
@@ -119,8 +104,8 @@ export default async function AdminPage({
                     <button type="submit" className="ghost-button">
                       {creator.status === "approved" ? "Pause" : "Resume"}
                     </button>
-                  </form>
-                  <form action={setCreatorStatus}>
+                  </ActionForm>
+                  <ActionForm action={setCreatorStatus}>
                     <input type="hidden" name="id" value={creator.id} />
                     <input type="hidden" name="status" value="removed" />
                     <ConfirmButton
@@ -129,7 +114,7 @@ export default async function AdminPage({
                     >
                       Remove
                     </ConfirmButton>
-                  </form>
+                  </ActionForm>
                 </div>
               </li>
             ))}
@@ -161,13 +146,12 @@ export default async function AdminPage({
                   {creator.isSeed ? <span className="tag">seed</span> : null}
                 </div>
                 <div className="creator-controls">
-                  <form action={restoreUpAction}>
+                  <ActionForm action={restoreUpAction}>
                     <input type="hidden" name="creatorId" value={creator.id} />
-                    <input type="hidden" name="returnTo" value="/admin" />
                     <button type="submit" className="ghost-button">
                       Restore
                     </button>
-                  </form>
+                  </ActionForm>
                 </div>
               </li>
             ))}
@@ -206,13 +190,12 @@ export default async function AdminPage({
                   </span>
                 </div>
                 <div className="creator-controls">
-                  <form action={unblockPostAction}>
+                  <ActionForm action={unblockPostAction}>
                     <input type="hidden" name="postId" value={post.postId} />
-                    <input type="hidden" name="returnTo" value="/admin" />
                     <button type="submit" className="ghost-button">
                       Unblock
                     </button>
-                  </form>
+                  </ActionForm>
                 </div>
               </li>
             ))}

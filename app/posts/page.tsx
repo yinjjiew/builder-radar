@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ActionForm } from "@/components/action-form";
 import { ConfirmButton } from "@/components/confirm-button";
 import { SiteNav } from "@/components/site-nav";
 import { addPostAction, deletePostAction } from "@/app/curate/actions";
@@ -42,7 +43,7 @@ function href(metric: PostRankMetric, window: RankWindow) {
 export default async function PostRankPage({
   searchParams
 }: {
-  searchParams: Promise<{ by?: string; window?: string; done?: string; error?: string }>;
+  searchParams: Promise<{ by?: string; window?: string }>;
 }) {
   const params = await searchParams;
   const metric: PostRankMetric = params.by === "likes" ? "likes" : "rate";
@@ -68,14 +69,9 @@ export default async function PostRankPage({
     0
   );
 
-  const returnTo = href(metric, window);
-
   return (
     <main className="insights-shell">
       <SiteNav current="/posts" />
-
-      {params.done ? <div className="notice notice-success">{params.done}</div> : null}
-      {params.error ? <div className="notice notice-error">{params.error}</div> : null}
 
       <header className="insights-header">
         <p className="eyebrow">Post rank</p>
@@ -159,7 +155,7 @@ export default async function PostRankPage({
             Paste the link to any post. If its author is not on the roster they are stored as a
             guest, so the post joins the rankings without joining the builder list.
           </p>
-          <form action={addPostAction} className="add-creator-form">
+          <ActionForm action={addPostAction} className="add-creator-form">
             <label className="sr-only" htmlFor="post-link">
               Post link
             </label>
@@ -170,11 +166,10 @@ export default async function PostRankPage({
               autoComplete="off"
               required
             />
-            <input type="hidden" name="returnTo" value={returnTo} />
             <button type="submit" className="approve-button">
               Add post
             </button>
-          </form>
+          </ActionForm>
         </section>
       ) : null}
 
@@ -227,16 +222,15 @@ export default async function PostRankPage({
                       Open post
                     </a>
                     {admin ? (
-                      <form action={deletePostAction} className="inline-form">
+                      <ActionForm action={deletePostAction} className="inline-form">
                         <input type="hidden" name="postId" value={post.id} />
-                        <input type="hidden" name="returnTo" value={returnTo} />
                         <ConfirmButton
                           className="danger-link"
                           message={`Delete @${post.username}'s post permanently?\n\nIt will be removed from every ranking and will never be collected again, even though it stays on X.\n\nThis cannot be undone from this page.`}
                         >
                           Delete
                         </ConfirmButton>
-                      </form>
+                      </ActionForm>
                     ) : null}
                   </div>
                 </div>

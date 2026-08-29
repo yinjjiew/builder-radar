@@ -1,3 +1,4 @@
+import { ActionForm } from "@/components/action-form";
 import { BuilderCard } from "@/components/builder-card";
 import { TagSlots } from "@/components/tag-slots";
 import { addUpAction } from "@/app/curate/actions";
@@ -7,16 +8,8 @@ import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
-export default async function HomePage({
-  searchParams
-}: {
-  searchParams: Promise<{ done?: string; error?: string }>;
-}) {
-  const [builders, admin, params] = await Promise.all([
-    getBuilders(),
-    isAdmin(),
-    searchParams
-  ]);
+export default async function HomePage() {
+  const [builders, admin] = await Promise.all([getBuilders(), isAdmin()]);
   const latestSync = builders
     .map((builder) => builder.lastSyncedAt)
     .filter((value): value is string => Boolean(value))
@@ -101,9 +94,6 @@ export default async function HomePage({
           </div>
         ) : null}
 
-        {params.done ? <div className="notice notice-success">{params.done}</div> : null}
-        {params.error ? <div className="notice notice-error">{params.error}</div> : null}
-
         {admin ? (
           <div className="curate-inline">
             <h3>Add a builder</h3>
@@ -113,7 +103,7 @@ export default async function HomePage({
               description is optional. Their posts arrive with the next six-hour update, and the
               insights brief picks them up on the same cycle.
             </p>
-            <form action={addUpAction} className="add-creator-form add-creator-tagged">
+            <ActionForm action={addUpAction} className="add-creator-form add-creator-tagged">
               <label className="sr-only" htmlFor="up-link">
                 X username or profile link
               </label>
@@ -135,11 +125,10 @@ export default async function HomePage({
                 autoComplete="off"
                 maxLength={400}
               />
-              <input type="hidden" name="returnTo" value="/" />
               <button type="submit" className="approve-button">
                 Add builder
               </button>
-            </form>
+            </ActionForm>
           </div>
         ) : null}
 

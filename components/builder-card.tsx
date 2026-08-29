@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { ActionForm } from "@/components/action-form";
 import { ConfirmButton } from "@/components/confirm-button";
 import { TagSlots } from "@/components/tag-slots";
 import { removeUpAction, setCreatorTagsAction } from "@/app/curate/actions";
@@ -62,16 +63,15 @@ export function BuilderCard({
               <span>{builder.followersCount === null ? "" : "followers"}</span>
             </div>
             {admin ? (
-              <form action={removeUpAction} className="inline-form">
+              <ActionForm action={removeUpAction} className="inline-form">
                 <input type="hidden" name="creatorId" value={builder.id} />
-                <input type="hidden" name="returnTo" value="/" />
                 <ConfirmButton
                   className="danger-link"
                   message={`Remove @${builder.username} from the directory permanently?\n\nThey will drop out of the ranking and the six-hour update will not add them back.\n\nTheir collected posts stop counting towards the statistics.`}
                 >
                   Remove
                 </ConfirmButton>
-              </form>
+              </ActionForm>
             ) : null}
           </div>
         </header>
@@ -108,9 +108,8 @@ export function BuilderCard({
         {admin ? (
           <details className="tag-editor">
             <summary>Edit tags</summary>
-            <form action={setCreatorTagsAction} className="tag-form">
+            <ActionForm action={setCreatorTagsAction} className="tag-form">
               <input type="hidden" name="creatorId" value={builder.id} />
-              <input type="hidden" name="returnTo" value="/" />
               <TagSlots selected={builder.workKinds} idPrefix={`builder-${builder.id}`} />
               <label className="tag-note-label" htmlFor={`note-${builder.id}`}>
                 Description (optional)
@@ -126,7 +125,7 @@ export function BuilderCard({
               <button type="submit" className="approve-button">
                 Save tags
               </button>
-            </form>
+            </ActionForm>
           </details>
         ) : null}
       </div>

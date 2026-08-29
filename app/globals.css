@@ -239,6 +239,21 @@ footer p { color: rgba(255,255,255,.46); font-size: 12px; }
 .notice-success { background: var(--acid); }
 .notice-error { background: #f7e2df; }
 
+/* The fieldset exists only to disable everything inside it while a save is in
+   flight, so it must not introduce a box of its own. */
+.form-fields { display: contents; border: 0; margin: 0; padding: 0; min-inline-size: 0; }
+.form-fields:disabled { opacity: .55; }
+
+/* The outcome of a save, shown where the save happened. Both a flex row and a
+   grid form put it on its own line rather than squeezing it beside the button. */
+.form-note {
+  display: block; flex-basis: 100%; grid-column: 1 / -1;
+  margin-top: 6px; font-size: 11.5px; line-height: 1.5;
+}
+.form-note-ok { color: var(--ink); }
+.form-note-ok::before { content: "✓ "; }
+.form-note-bad { color: #a4442f; }
+
 .admin-section { padding: 34px 0; border-bottom: 1px solid var(--line); }
 .admin-section > h2 { margin: 0 0 6px; font-family: Georgia, serif; font-size: 25px; font-weight: 400; }
 .section-note { margin: 0 0 18px; color: var(--muted); font-size: 13px; line-height: 1.6; }

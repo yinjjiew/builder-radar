@@ -10,6 +10,12 @@
  * Restored rows keep reviewed = false, which is the honest value. The category on
  * them is the model's guess and nobody has checked it, so they come back into the
  * review queue rather than arriving with a judgement they never received.
+ *
+ * metrics_refreshed_at must not be set to created_at. It was, the first time this
+ * ran, and it says the like count was read the moment the post appeared -- which
+ * fails the 24-hour maturity test forever and quietly removed all 73 rows from
+ * every statistic. Client & brand work then read 38 posts in review and one in
+ * the category table.
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { getDb } from "../lib/db";
@@ -56,12 +62,12 @@ await sql.begin(async (tx) => {
       insert into posts (
         id, creator_id, text, url, created_at,
         like_count, repost_count, reply_count, added_by_hand,
-        fetched_at, metrics_refreshed_at
-      ) values (
-        ${row.id}, ${row.creator_id}, ${row.text}, ${row.url}, ${row.created_at},
-        ${row.like_count}, ${row.repost_count}, ${row.reply_count}, ${row.added_by_hand},
-        now(), ${row.created_at}
-      )
+            fetched_at, metrics_refreshed_at
+          ) values (
+            ${row.id}, ${row.creator_id}, ${row.text}, ${row.url}, ${row.created_at},
+            ${row.like_count}, ${row.repost_count}, ${row.reply_count}, ${row.added_by_hand},
+            now(), now()
+          )
       on conflict (id) do nothing
     `;
 

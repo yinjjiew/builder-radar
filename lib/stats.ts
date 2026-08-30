@@ -510,7 +510,7 @@ export type CategoryRow = DimensionRow & {
  * offered because the disagreement between them is the interesting part.
  */
 export async function getCategoryStats(
-  metric: PostRankMetric = "rate",
+  metric: PostRankMetric = "likes",
   window: RankWindow = "all"
 ): Promise<CategoryRow[]> {
   if (!hasDatabase()) return [];

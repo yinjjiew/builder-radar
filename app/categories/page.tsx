@@ -61,7 +61,7 @@ export default async function CategoriesPage({
   searchParams: Promise<{ by?: string; window?: string }>;
 }) {
   const params = await searchParams;
-  const metric: PostRankMetric = params.by === "likes" ? "likes" : "rate";
+  const metric: PostRankMetric = params.by === "rate" ? "rate" : "likes";
   const window = parseWindow(params.window);
 
   if (!hasDatabase()) {
@@ -131,18 +131,18 @@ export default async function CategoriesPage({
         <div className="toggle-stack">
           <div className="metric-toggle" role="group" aria-label="Ranking metric">
             <Link
-              href={href("rate", window)}
-              className={metric === "rate" ? "metric-option active" : "metric-option"}
-              aria-current={metric === "rate" ? "true" : undefined}
-            >
-              Likes per 1k followers
-            </Link>
-            <Link
               href={href("likes", window)}
               className={metric === "likes" ? "metric-option active" : "metric-option"}
               aria-current={metric === "likes" ? "true" : undefined}
             >
               Raw likes
+            </Link>
+            <Link
+              href={href("rate", window)}
+              className={metric === "rate" ? "metric-option active" : "metric-option"}
+              aria-current={metric === "rate" ? "true" : undefined}
+            >
+              Likes per 1k followers
             </Link>
           </div>
 

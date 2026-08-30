@@ -46,7 +46,7 @@ export default async function PostRankPage({
   searchParams: Promise<{ by?: string; window?: string }>;
 }) {
   const params = await searchParams;
-  const metric: PostRankMetric = params.by === "likes" ? "likes" : "rate";
+  const metric: PostRankMetric = params.by === "rate" ? "rate" : "likes";
   const window = parseWindow(params.window);
   const admin = await isAdmin();
 
@@ -103,18 +103,18 @@ export default async function PostRankPage({
         <div className="toggle-stack">
           <div className="metric-toggle" role="group" aria-label="Ranking metric">
             <Link
-              href={href("rate", window)}
-              className={metric === "rate" ? "metric-option active" : "metric-option"}
-              aria-current={metric === "rate" ? "true" : undefined}
-            >
-              Likes per 1k followers
-            </Link>
-            <Link
               href={href("likes", window)}
               className={metric === "likes" ? "metric-option active" : "metric-option"}
               aria-current={metric === "likes" ? "true" : undefined}
             >
               Raw likes
+            </Link>
+            <Link
+              href={href("rate", window)}
+              className={metric === "rate" ? "metric-option active" : "metric-option"}
+              aria-current={metric === "rate" ? "true" : undefined}
+            >
+              Likes per 1k followers
             </Link>
           </div>
 
@@ -138,8 +138,8 @@ export default async function PostRankPage({
 
         <p className="footnote toggle-note">
           {metric === "rate"
-            ? "Ranked by likes divided by the author's follower count. This is the fairer comparison: it asks how hard a post landed relative to the audience that saw it, so a small account with a genuine hit outranks a large account posting routinely."
-            : "Ranked by absolute like count. This mostly ranks audience size — the largest accounts dominate regardless of whether a post did well for them. Useful for seeing what reached the most people, misleading as a measure of quality."}
+            ? "Ranked by likes divided by the author's follower count, which asks how hard a post landed relative to the audience it had, so a small account with a genuine hit outranks a large account posting routinely. Posts from accounts under 150 followers are left out: the arithmetic turns a small denominator into a large score without the work having done anything."
+            : "Ranked by absolute like count — what reached the most people. Audience size is most of what this measures, so a large account posting routinely will outrank a small account's best work. Switch to the rate to see it the other way round."}
         </p>
         <p className="footnote toggle-note">
           {window === "all"

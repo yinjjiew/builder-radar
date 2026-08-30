@@ -21,8 +21,18 @@ export const metadata = {
     "Which kinds of work earn the most attention: games, tools, client work, 3D and the rest, ranked by likes per 1,000 followers or by raw likes."
 };
 
-// Below this a category's numbers move too much on a single post to rank.
-const THIN_SAMPLE = 5;
+/**
+ * Below this a category's numbers move too much on a single post to rank.
+ *
+ * This was 5, which let a category of nine posts be ranked against one of
+ * thirty-eight as though the two medians carried the same weight. They do not:
+ * the corpus was searched hard for educational apps and practical web apps and
+ * the supply on X is genuinely thin, so those two sit in the double digits while
+ * the rest are near forty. Holding the line at five would present that gap as a
+ * finding about which work resonates, when it is a fact about how many posts
+ * there are to look at.
+ */
+const THIN_SAMPLE = 15;
 
 function href(metric: PostRankMetric, window: RankWindow) {
   return `/categories?by=${metric}&window=${window}`;

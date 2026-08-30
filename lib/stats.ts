@@ -32,6 +32,21 @@ const MATURITY = "24 hours";
 const MIN_POSTS_FOR_BASELINE = 4;
 
 /**
+ * Below this many followers, likes per 1,000 followers stops describing anything.
+ *
+ * A post from a 41-follower account that drew 147 likes reads as 3,585 per 1k and
+ * took first place on the rate ranking, but those likes did not come from 41
+ * people — the reach came from the algorithm, so dividing by the follower count
+ * measures how small the account is rather than how well the work landed. The
+ * same arithmetic puts a 5-follower account at 4,400.
+ *
+ * These posts stay in the corpus and still appear in the ranking by raw likes,
+ * where their numbers mean what they say. Only the rate is withheld, and with it
+ * any category average that would otherwise be moved by a denominator of 41.
+ */
+const MIN_FOLLOWERS_FOR_RATE = 150;
+
+/**
  * Both statuses contribute posts to the statistics. 'guest' is the author of a
  * post added by hand who was never chosen for the ranked roster — their post is
  * part of the corpus, they are not part of the directory.
@@ -251,7 +266,11 @@ function scoredPosts(sql: ReturnType<typeof getDb>, window: RankWindow = "all") 
         p.id, p.creator_id, p.text, p.url, p.created_at,
         p.like_count, p.repost_count, p.reply_count,
         c.username, c.followers_count,
-        (p.like_count::float8 / nullif(c.followers_count, 0) * 1000) as engagement,
+        (
+          p.like_count::float8
+          / nullif(case when c.followers_count >= ${MIN_FOLLOWERS_FOR_RATE} then c.followers_count end, 0)
+          * 1000
+        ) as engagement,
         (p.metrics_refreshed_at >= p.created_at + ${MATURITY}::interval) as mature
       from posts p
       join creators c on c.id = p.creator_id
@@ -457,7 +476,12 @@ export async function getTopPosts(
     from scored s
     join posts p on p.id = s.id
     left join post_insights pi on pi.post_id = s.id
-    where s.engagement is not null and ${workPostsOnly(sql)}
+    where ${
+      // Ranking by raw likes needs no rate, so a post whose follower count is too
+      // small to divide by still belongs in that list. Only the rate ranking has
+      // to insist on having one.
+      metric === "likes" ? sql`true` : sql`s.engagement is not null`
+    } and ${workPostsOnly(sql)}
     order by ${order}, s.created_at desc
     limit ${limit}
   `;

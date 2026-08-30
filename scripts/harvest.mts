@@ -12,7 +12,7 @@
  * own user lookup, and likes per 1,000 followers cannot be computed without the
  * follower count.
  */
-import { writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { getDb } from "../lib/db";
 
 const BASE = "https://api.x.com/2";
@@ -31,7 +31,25 @@ const MIN_LIKES = Number(process.env.MIN_LIKES ?? 60);
  * attached. The roster the owner built by hand tops out well below this, and the
  * categories being filled are ones small builders work in.
  */
-const MAX_FOLLOWERS = 80_000;
+const MAX_FOLLOWERS = Number(process.env.MAX_FOLLOWERS ?? 80_000);
+
+/**
+ * Likes per 1,000 followers, which is what the site actually ranks on.
+ *
+ * A raw-like floor asks the wrong question of a small maker. Fifteen likes from
+ * 500 followers is 30 per 1k and outranks 500 likes from 100,000 followers, so
+ * holding out for big like counts discards exactly the posts that score well on
+ * the page this corpus feeds.
+ */
+const MIN_ENGAGEMENT = Number(process.env.MIN_ENGAGEMENT ?? 0);
+
+/**
+ * Below this the rate stops meaning anything. An account with 41 followers that
+ * picks up 147 likes scores 3,585 per 1k and tops the table, but the reach came
+ * from the algorithm rather than from followers, so the ratio measures the wrong
+ * thing. One such post is already in the corpus and sits at number one.
+ */
+const MIN_FOLLOWERS = Number(process.env.MIN_FOLLOWERS ?? 150);
 
 /**
  * Token launches and agent-framework announcements match almost any phrasing
@@ -96,7 +114,13 @@ async function search(query: string, maxResults = 100) {
     // ruled out most visual work: a shader or a game is often posted as a video
     // with no link at all, which is true of a good part of the corpus already on
     // the site. Each query now says for itself whether a link is required.
-    query: `${query} ${EXCLUDE} -is:retweet -is:quote -is:reply lang:en`,
+    // lang:en was forced here too, and it removed the visual work wholesale: a
+    // sketch posted as an image with three words of caption is classified as an
+    // undetermined language rather than English, and the Japanese creative-coding
+    // accounts never appeared at all. Set LANG= to drop the restriction.
+    query:
+      `${query} ${EXCLUDE} -is:retweet -is:quote -is:reply` +
+      (process.env.LANG_FILTER === "" ? "" : ` ${process.env.LANG_FILTER ?? "lang:en"}`),
     max_results: String(maxResults),
     sort_order: "relevancy",
     "tweet.fields": "created_at,public_metrics,author_id,lang,referenced_tweets,entities",
@@ -126,6 +150,18 @@ async function search(query: string, maxResults = 100) {
 
   const users = new Map((json.includes?.users ?? []).map((user) => [user.id, user]));
 
+  // Every post here has already been paid for. The like floor and the follower cap
+  // are applied below in this process, so a run with the wrong floor throws away
+  // posts that cost money to read and cannot be got back without paying again --
+  // which is exactly what happened to a batch of generative-art accounts whose
+  // work sits under sixty likes. Raw responses are kept so the filters can be
+  // reconsidered offline.
+  mkdirSync("harvest-raw", { recursive: true });
+  appendFileSync(
+    "harvest-raw/responses.jsonl",
+    JSON.stringify({ at: new Date().toISOString(), query, response: json }) + "\n"
+  );
+
   return (json.data ?? []).flatMap<Candidate>((post) => {
     const likes = post.public_metrics?.like_count ?? 0;
     if (likes < MIN_LIKES) return [];
@@ -134,7 +170,8 @@ async function search(query: string, maxResults = 100) {
     const author = users.get(post.author_id);
     if (!author) return [];
     const followers = author.public_metrics?.followers_count ?? 0;
-    if (!followers || followers > MAX_FOLLOWERS) return [];
+    if (followers < MIN_FOLLOWERS || followers > MAX_FOLLOWERS) return [];
+    if ((likes / followers) * 1000 < MIN_ENGAGEMENT) return [];
     return [
       {
         id: post.id,

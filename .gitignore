@@ -11,3 +11,4 @@ npm-debug.log*
 # Restore points for destructive corpus operations. Local only: they contain the
 # whole post text and exist for the minutes after a bulk delete, not for review.
 backups/
+harvest-raw/

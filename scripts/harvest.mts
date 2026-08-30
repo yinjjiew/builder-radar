@@ -16,7 +16,22 @@ import { writeFileSync } from "node:fs";
 import { getDb } from "../lib/db";
 
 const BASE = "https://api.x.com/2";
-const MIN_LIKES = 120;
+/**
+ * Low, on purpose. The site ranks by likes per 1,000 followers, so a 70-like post
+ * from a builder with 800 followers outscores a 400-like post from one with
+ * 90,000 — and the categories that need filling are exactly the ones small
+ * accounts work in. A high floor here would re-collect the same large accounts
+ * the roster already covers.
+ */
+const MIN_LIKES = Number(process.env.MIN_LIKES ?? 60);
+
+/**
+ * Above this, the account is a company, a media outlet or a celebrity, and the
+ * post is almost always marketing, industry news, or a teaser with nothing
+ * attached. The roster the owner built by hand tops out well below this, and the
+ * categories being filled are ones small builders work in.
+ */
+const MAX_FOLLOWERS = 80_000;
 
 /**
  * Token launches and agent-framework announcements match almost any phrasing
@@ -25,7 +40,7 @@ const MIN_LIKES = 120;
  * past them.
  */
 const EXCLUDE =
-  '-airdrop -presale -token -tokens -"$" -crypto -web3 -onchain -"on-chain" -NFT -mint -staking -giveaway -RT -hiring -course -discount -"my newsletter"';
+  '-airdrop -presale -token -tokens -"$" -crypto -web3 -onchain -"on-chain" -NFT -mint -staking -giveaway -RT -hiring -course -discount -"my newsletter" -nsfw -hentai -porn -onlyfans -fetish -adultgame -throne';
 
 type Metrics = {
   like_count: number;
@@ -40,6 +55,7 @@ type Raw = {
   lang?: string;
   public_metrics?: Metrics;
   referenced_tweets?: Array<{ type: string; id: string }>;
+  entities?: { urls?: Array<{ expanded_url?: string; unwound_url?: string }> };
 };
 type User = {
   id: string;
@@ -64,18 +80,35 @@ export type Candidate = {
   profileImageUrl: string | null;
   verified: boolean;
   engagement: number;
+  /**
+   * Where the post actually points. A t.co link says nothing, and the difference
+   * between a category and a wrong guess is usually the destination: itch.io and
+   * a Steam page are not the same kind of work, and neither are a GitHub repo and
+   * a live demo.
+   */
+  links: string[];
   query: string;
 };
 
-async function search(query: string, maxResults = 500) {
+async function search(query: string, maxResults = 100) {
   const params = new URLSearchParams({
-    query: `${query} ${EXCLUDE} -is:retweet -is:quote -is:reply has:links lang:en`,
+    // Only the three exclusions are forced. `has:links` used to be, and it quietly
+    // ruled out most visual work: a shader or a game is often posted as a video
+    // with no link at all, which is true of a good part of the corpus already on
+    // the site. Each query now says for itself whether a link is required.
+    query: `${query} ${EXCLUDE} -is:retweet -is:quote -is:reply lang:en`,
     max_results: String(maxResults),
     sort_order: "relevancy",
-    "tweet.fields": "created_at,public_metrics,author_id,lang,referenced_tweets",
+    "tweet.fields": "created_at,public_metrics,author_id,lang,referenced_tweets,entities",
     expansions: "author_id",
     "user.fields": "description,profile_image_url,public_metrics,verified"
   });
+
+  // The archive holds far more than the last month, and the site ranks over all
+  // history, so the thin categories are worth searching back through. Relevancy
+  // ordering on its own returns almost nothing older than a few weeks.
+  if (process.env.START_TIME) params.set("start_time", process.env.START_TIME);
+  if (process.env.END_TIME) params.set("end_time", process.env.END_TIME);
 
   const response = await fetch(`${BASE}/tweets/search/all?${params}`, {
     headers: { Authorization: `Bearer ${process.env.X_BEARER_TOKEN}` }
@@ -101,7 +134,7 @@ async function search(query: string, maxResults = 500) {
     const author = users.get(post.author_id);
     if (!author) return [];
     const followers = author.public_metrics?.followers_count ?? 0;
-    if (!followers) return [];
+    if (!followers || followers > MAX_FOLLOWERS) return [];
     return [
       {
         id: post.id,
@@ -116,6 +149,9 @@ async function search(query: string, maxResults = 500) {
         profileImageUrl: author.profile_image_url ?? null,
         verified: Boolean(author.verified),
         engagement: (likes / followers) * 1000,
+        links: (post.entities?.urls ?? [])
+          .map((url) => url.unwound_url ?? url.expanded_url ?? "")
+          .filter((url) => url && !url.includes("//x.com/") && !url.includes("//twitter.com/")),
         query
       }
     ];
@@ -182,6 +218,9 @@ console.log(
 );
 for (const candidate of all) {
   console.log(
-    `${candidate.id}|${candidate.username}|${candidate.likeCount}|${Math.round(candidate.engagement)}|${candidate.text.replace(/\s+/g, " ").slice(0, 150)}`
+    `\n${candidate.id} @${candidate.username} · ${candidate.followers} followers · ` +
+      `${candidate.likeCount} likes · ${Math.round(candidate.engagement)}/1k`
   );
+  console.log(`  ${candidate.text.replace(/\s+/g, " ")}`);
+  if (candidate.links.length) console.log(`  -> ${candidate.links.join("  ")}`);
 }

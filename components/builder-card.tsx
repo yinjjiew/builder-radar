@@ -67,7 +67,7 @@ export function BuilderCard({
                 <input type="hidden" name="creatorId" value={builder.id} />
                 <ConfirmButton
                   className="danger-link"
-                  message={`Remove @${builder.username} from the directory permanently?\n\nThey will drop out of the ranking and the six-hour update will not add them back.\n\nTheir collected posts stop counting towards the statistics.`}
+                  message={`Remove @${builder.username} from the directory permanently?\n\nThey will drop out of the ranking and the daily update will not add them back.\n\nTheir collected posts stop counting towards the statistics.`}
                 >
                   Remove
                 </ConfirmButton>

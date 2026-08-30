@@ -9,7 +9,7 @@ export type Builder = {
   lastSyncedAt: string | null;
   /**
    * What this builder makes: at most two tags and an optional sentence, both set
-   * by hand and never touched by the six-hour cycle. The tags use the same
+   * by hand and never touched by the daily cycle. The tags use the same
    * vocabulary as the post categories, so a builder's stated output and the
    * ranking of what resonates can be read against each other.
    *

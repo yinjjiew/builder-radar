@@ -102,7 +102,7 @@ export default async function ReviewPage({ searchParams }: { searchParams: Promi
           filtered view hides. Anything here can be re-tagged in place.
         </p>
         <p className="mission-line">
-          A tag you set is permanent. The six-hour cycle keeps collecting posts and re-reading them,
+          A tag you set is permanent. The daily cycle keeps collecting posts and re-reading them,
           but it will not overwrite a category a person chose, so the corrections accumulate rather
           than being undone overnight. Both{" "}
           <Link href="/posts" className="hero-inline-link">

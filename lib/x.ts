@@ -149,9 +149,23 @@ export function isRepostOrQuote(post: XPost) {
   );
 }
 
+/**
+ * `max_results` is a ceiling, not an order: with `since_id` set, only posts
+ * published since the last cycle come back, and only those are billed. The
+ * ceiling still matters, because anything above it is lost for good — the next
+ * cycle's `since_id` is the newest post stored, so posts stranded in the gap are
+ * never asked for again.
+ *
+ * On the old six-hour cycle a ceiling of 10 meant 40 posts a day per builder. On
+ * a daily cycle it means 10, and the busiest day any builder in this roster has
+ * had is 7. Three posts of headroom against a hard data loss is too thin a
+ * margin for a free ceiling, hence 25.
+ */
+const MAX_POSTS_PER_CYCLE = 25;
+
 export async function getUserPosts(userId: string, sinceId?: string | null) {
   const response = await xFetch<XPost[]>(`/users/${userId}/tweets`, {
-    max_results: "10",
+    max_results: String(MAX_POSTS_PER_CYCLE),
     exclude: "replies,retweets",
     "tweet.fields": "created_at,public_metrics,referenced_tweets",
     since_id: sinceId ?? ""

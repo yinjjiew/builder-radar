@@ -5,7 +5,15 @@ import { SiteNav } from "@/components/site-nav";
 import { KEEP_REPORTS } from "@/lib/enrich";
 import { hasDatabase } from "@/lib/db";
 import { compactNumber } from "@/lib/format";
-import { artifactLabel, audienceLabel, intentLabel, MISSION, themeLabel } from "@/lib/mission";
+import {
+  artifactLabel,
+  audienceLabel,
+  intentLabel,
+  MISSION,
+  productCategoryLabel,
+  themeLabel
+} from "@/lib/mission";
+import { OWNER_READING } from "@/lib/owner-reading";
 import {
   getBreakoutPosts,
   getCorpusHealth,
@@ -40,6 +48,77 @@ function stamp(value: string | null | undefined) {
     hour: "numeric",
     minute: "2-digit"
   });
+}
+
+/**
+ * The hand-written reading of the categories, above the machine brief because it
+ * is the more considered of the two: it was written after reading every post,
+ * where the brief below is regenerated from the tables each cycle.
+ */
+function OwnerReading() {
+  const { measuredAt, ranking, lead, caveats, findings } = OWNER_READING;
+  const widest = Math.max(...ranking.map((row) => row.avgLikes));
+  // Noon rather than midnight: a bare date parses as UTC, and rendering that in
+  // any negative offset moves the stamp to the day before the one written down.
+  const written = new Date(`${measuredAt}T12:00:00Z`).toLocaleDateString("en", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC"
+  });
+
+  return (
+    <section className="owner-reading" aria-label="The owner's reading of the categories">
+      <p className="eyebrow">Read by hand</p>
+      <h2>What eight categories of work turned out to be worth.</h2>
+      <p className="owner-stamp">
+        Written {written}, after every collected post had been filed by hand. The figures quoted
+        here are frozen with the text; the tables further down always recompute. Nothing in this
+        section is written or edited by the daily cycle.
+      </p>
+
+      <p className="owner-lead">{lead}</p>
+
+      <ol className="owner-ranking">
+        {ranking.map((row, index) => (
+          <li key={row.category}>
+            <span className="owner-rank-index">{index + 1}</span>
+            <span className="owner-rank-name">{productCategoryLabel(row.category)}</span>
+            <span className="owner-rank-bar" aria-hidden="true">
+              <i style={{ width: `${(row.avgLikes / widest) * 100}%` }} />
+            </span>
+            <span className="owner-rank-value">
+              {row.avgLikes.toLocaleString()}
+              <em>avg likes</em>
+            </span>
+            <span className="owner-rank-posts">n&nbsp;=&nbsp;{row.posts}</span>
+          </li>
+        ))}
+      </ol>
+
+      <div className="owner-caveats">
+        <h3>Why that order is a starting point</h3>
+        <ul>
+          {caveats.map((caveat) => (
+            <li key={caveat.id}>
+              <strong>{caveat.title}</strong>
+              <p>{caveat.detail}</p>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <ol className="owner-findings">
+        {findings.map((finding) => (
+          <li key={finding.id}>
+            <h3>{finding.title}</h3>
+            <p className="owner-body">{finding.body}</p>
+            <p className="owner-evidence">{finding.evidence}</p>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
 }
 
 export default async function InsightsPage({
@@ -129,6 +208,8 @@ export default async function InsightsPage({
           </div>
         </div>
       </header>
+
+      <OwnerReading />
 
       {history.length > 1 ? (
         <section className="version-bar" aria-label="Saved versions of this brief">
@@ -450,7 +531,7 @@ export default async function InsightsPage({
         </p>
         <p className="footnote">
           Statistics recompute on every page load, so the tables are never stale relative to the
-          collected data. One update cycle runs every six hours in three phases — posts collected{" "}
+          collected data. One update cycle runs once a day in three phases — posts collected{" "}
           {stamp(cycle?.postsAt)}, summaries {stamp(cycle?.enrichedAt)}, this brief{" "}
           {stamp(cycle?.briefAt)}. They are minutes apart rather than simultaneous because each
           phase has its own function time limit.

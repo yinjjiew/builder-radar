@@ -15,21 +15,26 @@ const REFRESH_BATCH = 100;
 const SETTLED_RECHECK_DAYS = 7;
 
 /**
- * The age at which a post's counts are read for the record.
+ * The age a post has to reach before its counts are read for the record.
  *
  * Comfortably past the 24-hour bar the statistics use for maturity, and read
- * once rather than on every cycle until the post is two days old. Re-reading a
- * fresh post four times a day cost eight paid reads to arrive at the same answer
- * as one well-timed read, and produced a *worse* number: posts ended up measured
- * anywhere between 24 and 48 hours of age, while a single read at this age puts
- * every post in a narrow band. Cheaper and more comparable at the same time.
+ * once rather than on every cycle until the post is two days old.
+ *
+ * On a daily cycle this threshold no longer decides *when* the read happens —
+ * the cycle does. A post is first seen somewhere between 0 and 24 hours old,
+ * which is too young to count, and the next cycle finds it between 24 and 48
+ * hours old, which is past this bar, so in practice every post is measured on
+ * its second cycle. That widens the age band the corpus is measured at, from
+ * roughly 26-30 hours on the old six-hour cycle to 24-48 now. It costs a day of
+ * latency before a post enters the rankings and buys slightly settled counts,
+ * since likes keep climbing for about two days either way.
  */
 const SETTLE_HOURS = 26;
 
-// Profile reads bill at $0.010 each against $0.005 for a post, so with thirty
-// builders they were the largest line on the bill — and follower counts barely
-// move in six hours. Refreshing them daily instead of four times a day removes
-// about three quarters of that cost and changes no number anyone looks at.
+// Profile reads bill at $0.010 each against $0.005 for a post, so with sixty
+// builders they are the largest line on the bill. Anything below 24 makes them
+// refresh on every daily cycle, which is what this now does; the gap is kept so
+// a manually triggered run an hour later does not pay for sixty reads again.
 const PROFILE_REFRESH_HOURS = 20;
 
 /**

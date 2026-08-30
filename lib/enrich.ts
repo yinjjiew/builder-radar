@@ -113,7 +113,7 @@ async function selectCandidates(): Promise<Candidate[]> {
       left join post_insights pi on pi.post_id = recent.id
       -- Never re-reads a post that already has a row. A category, once written,
       -- is final: the owner reviews the corpus by hand, and a cycle that
-      -- re-judged old posts would undo that work every six hours and make the
+      -- re-judged old posts would undo that work every day and make the
       -- rankings move for reasons nobody chose. Only genuinely new posts are
       -- classified, which is also why a prompt change no longer sweeps the
       -- corpus — the vocabulary is applied going forward, not retroactively.

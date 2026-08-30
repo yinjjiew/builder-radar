@@ -110,7 +110,7 @@ export default async function AdminPage() {
                     <input type="hidden" name="status" value="removed" />
                     <ConfirmButton
                       className="reject-button"
-                      message={`Remove @${creator.username} from the directory permanently?\n\nThey will drop out of the ranking and the six-hour update will not add them back — including if they are on the seed list.\n\nYou can undo this from the removed list below.`}
+                      message={`Remove @${creator.username} from the directory permanently?\n\nThey will drop out of the ranking and the daily update will not add them back — including if they are on the seed list.\n\nYou can undo this from the removed list below.`}
                     >
                       Remove
                     </ConfirmButton>
@@ -125,7 +125,7 @@ export default async function AdminPage() {
       <section className="admin-section">
         <h2>Removed builders ({removed.length})</h2>
         <p className="section-note">
-          Removal is permanent by design: the six-hour update will not add these back, even the
+          Removal is permanent by design: the daily update will not add these back, even the
           ones that came from the seed list. This is the only place it can be undone.
         </p>
         {removed.length === 0 ? (

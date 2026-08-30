@@ -28,7 +28,7 @@ import { requireAdmin } from "@/lib/role";
 /**
  * Every page that reads tags is invalidated after every edit, which is what makes
  * a correction show up in both rankings on the next page view rather than at the
- * next six-hour cycle. The pages compute their statistics per request, so there
+ * next daily cycle. The pages compute their statistics per request, so there
  * is no cached number to go stale behind them.
  */
 const PATHS = ["/", "/posts", "/categories", "/review", "/admin"];

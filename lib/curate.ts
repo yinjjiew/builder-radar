@@ -16,7 +16,7 @@ export type CurateResult = { ok: true; message: string } | { ok: false; message:
  * Removes a post and records that it must never come back.
  *
  * Deleting the row alone is not enough. The sync re-reads each builder's timeline
- * on every cycle, so a post removed by hand would reappear within six hours. The
+ * on every cycle, so a post removed by hand would reappear the next day. The
  * blocklist is what the insert consults to make the removal permanent, and it
  * keeps the post id after the row is gone.
  */
@@ -52,7 +52,7 @@ export async function blockPost(postId: string): Promise<CurateResult> {
  *
  * The write marks the row as edited, and that flag is permanent: the enrichment
  * upsert reads it and leaves the categories alone from then on. Without it a
- * correction would live for at most six hours, which would make reviewing the
+ * correction would live for at most a day, which would make reviewing the
  * corpus pointless.
  *
  * An empty list is a real answer, not a missing one — it is how "this is not
@@ -127,7 +127,7 @@ export async function markPostReviewed(postId: string): Promise<CurateResult> {
 /**
  * Sets a builder's tags and the sentence under their name.
  *
- * Both are the owner's from here on. The six-hour cycle writes neither, so what
+ * Both are the owner's from here on. The daily cycle writes neither, so what
  * is set here is what the directory shows until it is changed by hand — which is
  * the point: a tag chosen after reading someone's feed is worth more than one
  * re-derived from twenty posts every cycle.

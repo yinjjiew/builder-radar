@@ -38,7 +38,7 @@ export default async function HomePage() {
           <p className="hero-description">
             Creative studios, interactive and 3D developers, design engineers and the people
             who make the tools they build with. Everyone here passes two tests: they build for
-            the web, and they show the result. Every six hours an AI reads what each one shipped
+            the web, and they show the result. Once a day an AI reads what each one shipped
             and{" "}
             <Link href="/insights" className="hero-inline-link">
               measures which of it the audience actually rewards
@@ -47,7 +47,7 @@ export default async function HomePage() {
           </p>
           <div className="hero-stats" aria-label="Directory details">
             <div><strong>{builders.length}</strong><span>curated builders</span></div>
-            <div><strong>6h</strong><span>refresh cycle</span></div>
+            <div><strong>24h</strong><span>refresh cycle</span></div>
             <div><strong>AI</strong><span>demand analysis</span></div>
           </div>
         </div>
@@ -71,7 +71,7 @@ export default async function HomePage() {
             <p className="section-note">
               Followers set the order, not the membership. Each entry carries at most two tags
               naming what that builder focuses on, chosen by hand from the same vocabulary the
-              posts are categorised with. The six-hour update refreshes follower counts and
+              posts are categorised with. The daily update refreshes follower counts and
               collects posts; it never rewrites a tag or a description.
             </p>
           </div>
@@ -100,7 +100,7 @@ export default async function HomePage() {
             <p className="section-note">
               Paste an X handle or profile link and say what they build. The tag is required: you
               have just read their feed, which is the only moment anyone actually knows. The
-              description is optional. Their posts arrive with the next six-hour update, and the
+              description is optional. Their posts arrive with the next daily update, and the
               insights brief picks them up on the same cycle.
             </p>
             <ActionForm action={addUpAction} className="add-creator-form add-creator-tagged">

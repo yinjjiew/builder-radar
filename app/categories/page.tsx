@@ -401,7 +401,7 @@ export default async function CategoriesPage({
         </p>
         <p className="footnote">
           Any tag can be corrected by hand on the review page, and a hand-set tag is permanent: the
-          six-hour cycle re-reads posts but never overwrites a category a person chose. Both this
+          daily cycle re-reads posts but never overwrites a category a person chose. Both this
           ranking and the post rank are computed on every page load, so a correction shows up
           immediately; the written brief on <Link href="/insights">/insights</Link> is rewritten on
           the next cycle rather than on the spot.

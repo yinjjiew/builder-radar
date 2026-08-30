@@ -270,7 +270,7 @@ export default async function PostRankPage({
         <p className="footnote">
           This ranking is computed from the database on every page load, so it is never stale
           relative to the collected data. New posts and refreshed like counts arrive with the
-          six-hour cycle; the most recent finished collecting at {stamp(cycle?.postsAt)}.
+          daily cycle; the most recent finished collecting at {stamp(cycle?.postsAt)}.
         </p>
         <p className="footnote">
           Posts marked <em>still climbing</em> had their like count read less than 24 hours after

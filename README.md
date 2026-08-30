@@ -31,14 +31,14 @@ The project is ready for GitHub and Vercel. It uses:
 - Creators are ranked by current X follower count, but follower count does not
   decide membership — see [Why this roster](#why-this-roster).
 - Each card carries **at most two tags** naming what that builder focuses on, plus
-  an optional sentence. Both are set by hand and the six-hour cycle never
+  an optional sentence. Both are set by hand and the daily cycle never
   overwrites them; see [Whose tags these are](#whose-tags-these-are).
 - Only posts that handed over something made are ranked; see
   [What counts as work](#what-counts-as-work).
 - Every tag on every post can be corrected on `/review`, and a correction shows up
   in both rankings on the next page load.
-- Posts and like counts update every six hours. Follower counts refresh daily —
-  see [X API cost](#x-api-cost) for why that split exists.
+- Posts, like counts and follower counts all update once a day, at 08:00 UTC —
+  see [X API cost](#x-api-cost) for what that cadence costs.
 - Builders are added from `/`, where choosing their tags is required; pause and
   remove live on `/admin`.
 - Individual posts are curated from `/posts`: add by link, or delete permanently.
@@ -194,16 +194,23 @@ That asymmetry is the point of both. The roster was assembled by reading feeds a
 deciding who belongs, and whoever just made that decision knows what the person
 builds — which is why adding a builder requires choosing their tags and why the
 cycle cannot revise them. Post categories are worth having a model do, because
-there are hundreds and they change weekly, but a review that got undone six hours
-later would not be worth doing at all.
+there are hundreds and they change weekly, but a review that got undone the next
+day would not be worth doing at all.
 
 ## Demand analysis at `/insights`
 
-Every six hours a model reads each builder's recent posts and answers two
+Once a day a model reads each builder's recent posts and answers two
 questions: what is this person actually building, and what does that imply for
-the goal in `lib/mission.ts`. That read feeds the statistics and the brief on
-`/insights`. It deliberately does not reach the directory card, because anything
-shown there has to survive the next cycle unchanged.
+the goal in `lib/mission.ts`. That read feeds the statistics and the machine brief
+on `/insights`. It deliberately does not reach the directory card, because
+anything shown there has to survive the next cycle unchanged.
+
+The page opens with a hand-written reading of the eight categories, held in
+`lib/owner-reading.ts` rather than in the `insight_reports` table. That table
+keeps only its newest eight rows and prunes the rest on every cycle, so a
+hand-written analysis stored there would be deleted within eight days. Its
+figures are frozen with its prose, the way an archived brief is; the tables
+below it always recompute.
 
 Each post is also tagged against a closed vocabulary — theme, artifact type, kind
 of work, intent, target audience, and a 0-100 score for how strongly it suggests
@@ -545,8 +552,8 @@ Both destructive controls ask for confirmation first, because both are permanent
 Two properties are worth knowing:
 
 - **Deleting a post is permanent.** The id goes into `blocked_posts`, and the sync
-  consults that table when inserting. Without it, a deleted post would return
-  within six hours, because it is still in its author's timeline.
+  consults that table when inserting. Without it, a deleted post would return on
+  the next cycle, because it is still in its author's timeline.
 - **Adding a post can pull in a non-roster author.** Likes per 1,000 followers needs
   a follower count, so the author is stored as a `guest`: their post counts towards
   the statistics, but they do not appear as a builder and their timeline is never
@@ -554,8 +561,8 @@ Two properties are worth knowing:
 
 Changes take effect on the rank pages immediately, since those query the database
 on each request and hold no cached numbers. Re-tag a post and both `/posts` and
-`/categories` reflect it on the next page load. The insights brief is rewritten on
-the six-hour cycle rather than on edit, because it is a model call rather than a
+`/categories` reflect it on the next page load. The machine brief is rewritten on
+the daily cycle rather than on edit, because it is a model call rather than a
 query.
 
 `/review` exists because the ranking pages are the wrong shape for correcting
@@ -583,21 +590,30 @@ request** — this single fact drives every design decision below.
 | User read                | $0.010    |
 | Following/followers read | $0.010    |
 
-### The six-hour cycle: roughly $40/month at sixty builders
+### The daily cycle
 
 Each run reads any genuinely new posts (`getUserPosts` passes `since_id`) and
 re-reads metrics for posts that have just passed the settling age, capped at 100
 posts per run and batched 100 ids per request.
 
-Growing the roster from thirty to sixty raised this by roughly two thirds. The
-metrics refresh is unaffected — it is capped per run, not per builder — so the
-increase is in new-post reads and daily profile reads.
+The cycle ran every six hours until August 2026 and measured roughly $40/month at
+sixty builders. Moving to once a day does not divide that by four, because only
+one of the three lines is frequency-dependent:
 
-**Profile reads are refreshed daily, not every six hours.** At $0.010 each,
-sixty profiles four times a day is $72/month on its own — and follower counts do
-not meaningfully move in six hours. `PROFILE_REFRESH_HOURS` in `lib/sync.ts` drops
-about three quarters of that cost and changes no number anyone looks at. Post
-fetching is unaffected because it uses the stored `x_user_id`.
+- **New-post reads are unchanged.** `since_id` means each post is read exactly
+  once whenever it is first seen, so polling four times as often never read it
+  four times. What did change is the ceiling: `MAX_POSTS_PER_CYCLE` in `lib/x.ts`
+  had to rise from 10 to 25, because a ceiling of 10 per cycle is 10 posts a day
+  rather than 40, and anything above it is lost for good rather than deferred.
+- **The metrics refresh falls by up to four times.** It is capped per run at 100
+  posts, so four runs a day could bill 400 reads where one bills 100.
+- **Profile reads are unchanged.** `PROFILE_REFRESH_HOURS` already gated them to
+  roughly once a day, which is why it sits at 20 rather than 6.
+
+Growing the roster from thirty to sixty raised the total by roughly two thirds.
+The metrics refresh is unaffected by roster size — it is capped per run, not per
+builder — so that increase was in new-post reads and daily profile reads. Post
+fetching does not pay for a profile read because it uses the stored `x_user_id`.
 
 **The metrics refresh is worth its cost, but only if timed.** `since_id` means a
 post is read once and never revisited, which froze every like count at whatever it
@@ -606,13 +622,18 @@ at 37 hours, making engagement comparison meaningless. `metrics_refreshed_at`
 records when counts were actually read, and only posts read at least 24 hours
 after publishing enter a ranking.
 
-The naive fix — re-read anything not yet two days old, every cycle — costs eight
+The naive fix — re-read anything not yet two days old, every cycle — cost eight
 paid reads per post to arrive at the same answer as one well-timed read. Measured
 on this corpus it made 71 posts eligible on every single run. `SETTLE_HOURS` in
 `lib/sync.ts` instead reads each post once, shortly after it crosses the maturity
-bar, plus a weekly sweep for longer-term drift. That is cheaper _and_ produces a
-better number: posts previously landed anywhere between 24 and 48 hours of age,
-where now they sit in a narrow band and are genuinely comparable.
+bar, plus a weekly sweep for longer-term drift.
+
+On a daily cycle the threshold no longer decides when that read lands; the cycle
+does. A post is first seen at under 24 hours old, too young to count, and is
+re-read on the next cycle at 24 to 48 hours. So the age band the corpus is
+measured at is wider than it was on the six-hour cycle, and a post takes a day
+longer to enter the rankings. Both are acceptable because likes keep climbing for
+about two days either way, so a later read is a slightly more settled one.
 
 ### The follow graph: removed, and why
 
@@ -621,9 +642,9 @@ following-list reads. It is gone, and the client function that read them is gone
 with it.
 
 A following list bills $0.010 per account returned. Reading sixty builders'
-complete lists — roughly a thousand accounts each — is about **$600**, and on the
-six-hour cycle it would exceed **$1,000/month**, more than everything else here
-combined. Even the budgeted version that shipped cost **$14.12** for a single pass
+complete lists — roughly a thousand accounts each — is about **$600**, and even
+once a day it would exceed **$250/month**, more than everything else here
+combined several times over. Even the budgeted version that shipped cost **$14.12** for a single pass
 of 30 builders x 50 accounts, produced 46 candidates, and had to be triggered by
 hand. That is a poor trade against reading a shortlist of feeds directly, which is
 how every builder currently on the roster was actually chosen.
@@ -635,7 +656,7 @@ cost. Nothing writes to them any more.
 ## Model cost
 
 Far smaller than the X API. One call per builder who posted something new, plus
-one call for the brief, four times a day. On `deepseek-v4-flash` that measured
+one call for the brief, once a day. On `deepseek-v4-flash` that measured
 around 2,000 output tokens per builder call, which is roughly **$3–5/month** at
 sixty builders. Builders with nothing new are skipped entirely, so the cost
 scales with how much the people you follow actually post.

@@ -13,6 +13,7 @@
  * follower count.
  */
 import { writeFileSync } from "node:fs";
+import { getDb } from "../lib/db";
 
 const BASE = "https://api.x.com/2";
 const MIN_LIKES = 120;
@@ -121,13 +122,36 @@ async function search(query: string, maxResults = 500) {
   });
 }
 
+/**
+ * Every post the owner has already ruled on, in either direction.
+ *
+ * `posts` holds what they kept and `blocked_posts` what they threw away, and a
+ * candidate matching either one is not a candidate: re-proposing a post they
+ * already filed wastes their time, and re-proposing one they discarded asks them
+ * to make the same decision twice.
+ */
+async function alreadyJudged() {
+  const sql = getDb();
+  const rows = await sql<Array<{ post_id: string }>>`
+    select id as post_id from posts
+    union
+    select post_id from blocked_posts
+  `;
+  await sql.end();
+  return new Set(rows.map((row) => row.post_id));
+}
+
 const [label, ...QUERIES] = process.argv.slice(2);
 if (!label || !QUERIES.length) {
   console.error('usage: harvest.mts <label> "query one" "query two" ...');
   process.exit(1);
 }
 
+const judged = await alreadyJudged();
+console.log(`excluding ${judged.size} posts already ruled on\n`);
+
 const found = new Map<string, Candidate>();
+let excluded = 0;
 
 for (const query of QUERIES) {
   try {
@@ -135,6 +159,10 @@ for (const query of QUERIES) {
     let added = 0;
     for (const candidate of results) {
       if (found.has(candidate.id)) continue;
+      if (judged.has(candidate.id)) {
+        excluded += 1;
+        continue;
+      }
       found.set(candidate.id, candidate);
       added += 1;
     }
@@ -148,7 +176,10 @@ for (const query of QUERIES) {
 const all = [...found.values()].sort((a, b) => b.likeCount - a.likeCount);
 const outfile = `/tmp/cand-${label}.json`;
 writeFileSync(outfile, JSON.stringify(all, null, 2));
-console.log(`\n${all.length} candidates over ${MIN_LIKES} likes -> ${outfile}`);
+console.log(
+  `\n${all.length} candidates over ${MIN_LIKES} likes -> ${outfile}` +
+    ` (${excluded} skipped as already judged)`
+);
 for (const candidate of all) {
   console.log(
     `${candidate.id}|${candidate.username}|${candidate.likeCount}|${Math.round(candidate.engagement)}|${candidate.text.replace(/\s+/g, " ").slice(0, 150)}`

@@ -77,15 +77,15 @@ export default async function PostRankPage({
         <p className="eyebrow">Post rank</p>
         <h1>The {RANK_SIZE} strongest pieces of work in the directory.</h1>
         <p className="mission-line">
-          Four views of the same corpus, and the disagreements between them are the useful part:
-          raw likes measure reach, likes per 1,000 followers measure resonance, and the range
-          decides whether you are asking what works or what is working now.
+          Four views of the same corpus, and the disagreements between them are the useful part: raw
+          likes measure reach, likes per 1,000 followers measure resonance, and the range decides
+          whether you are asking what works or what is working now.
         </p>
         <p className="mission-line">
           Only posts that handed over something made are ranked here, and each one carries the tag
           it was filed under. A post needs at least one of the{" "}
           <Link href="/categories" className="hero-inline-link">
-            seven kinds of work
+            eight kinds of work
           </Link>{" "}
           to qualify, which keeps out takes, questions, award announcements and industry news
           however well they performed.
@@ -200,6 +200,9 @@ export default async function PostRankPage({
                       })}
                       {post.mature ? null : <span className="fresh-flag">still climbing</span>}
                       {post.addedByHand ? <span className="fresh-flag">added by hand</span> : null}
+                      {post.reviewed ? null : (
+                        <span className="fresh-flag flag-unreviewed">not reviewed</span>
+                      )}
                     </span>
                   </div>
 
@@ -213,7 +216,7 @@ export default async function PostRankPage({
                         </span>
                       ))
                     ) : (
-                      <span className="tag tag-muted">untagged</span>
+                      <span className="tag tag-muted">deleted</span>
                     )}
                     {post.breakout === null ? null : (
                       <span className="rank-chip">{post.breakout.toFixed(1)}× their median</span>

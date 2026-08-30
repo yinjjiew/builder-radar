@@ -19,6 +19,14 @@ export type XPost = {
   id: string;
   text: string;
   created_at: string;
+  /**
+   * Present when the post points at another one. A reply, a repost or a quote all
+   * show up here; the type is what tells them apart.
+   */
+  referenced_tweets?: Array<{
+    type: "retweeted" | "quoted" | "replied_to";
+    id: string;
+  }>;
   public_metrics?: {
     like_count: number;
     retweet_count: number;
@@ -41,6 +49,21 @@ function token() {
     throw new Error("X_BEARER_TOKEN is not configured");
   }
   return process.env.X_BEARER_TOKEN;
+}
+
+/**
+ * Thrown when the X account has no credits left.
+ *
+ * Worth its own type because it is the one failure retrying cannot fix and the
+ * one the cycle must survive: every X endpoint returns it at once, and a cycle
+ * that treated it as a crash would skip recomputing the rankings and writing an
+ * insight from data already stored, which needs no API at all.
+ */
+export class XCreditsDepletedError extends Error {
+  constructor() {
+    super("The X API account is out of credits, so no new posts could be collected.");
+    this.name = "XCreditsDepletedError";
+  }
 }
 
 const MAX_ATTEMPTS = 4;
@@ -86,6 +109,7 @@ async function xFetch<T>(path: string, params: Record<string, string>) {
     }
 
     const body = await response.text();
+    if (response.status === 402) throw new XCreditsDepletedError();
     lastError = `X API ${response.status}: ${body.slice(0, 500)}`;
 
     const retryable = response.status === 429 || response.status >= 500;
@@ -110,14 +134,29 @@ export async function lookupUsersByUsernames(usernames: string[]) {
   return allUsers;
 }
 
+/**
+ * Is this someone else's post, passed along?
+ *
+ * The corpus is meant to measure what a builder made, and a repost or a quote
+ * measures what they noticed. Their like count belongs to the original author,
+ * so counting it here credits the wrong person and inflates whichever category
+ * the quoted thing happened to be about. `exclude=retweets` on the timeline
+ * catches only reposts, so quotes have to be dropped by looking at the reference.
+ */
+export function isRepostOrQuote(post: XPost) {
+  return (post.referenced_tweets ?? []).some(
+    (reference) => reference.type === "retweeted" || reference.type === "quoted"
+  );
+}
+
 export async function getUserPosts(userId: string, sinceId?: string | null) {
   const response = await xFetch<XPost[]>(`/users/${userId}/tweets`, {
     max_results: "10",
     exclude: "replies,retweets",
-    "tweet.fields": "created_at,public_metrics",
+    "tweet.fields": "created_at,public_metrics,referenced_tweets",
     since_id: sinceId ?? ""
   });
-  return response.data ?? [];
+  return (response.data ?? []).filter((post) => !isRepostOrQuote(post));
 }
 
 /**
@@ -149,7 +188,7 @@ export async function getPostsByIds(ids: string[]) {
  */
 export async function getPostWithAuthor(id: string) {
   const response = await xFetch<XPost & { author_id?: string }>(`/tweets/${id}`, {
-    "tweet.fields": "created_at,public_metrics,author_id",
+    "tweet.fields": "created_at,public_metrics,author_id,referenced_tweets",
     expansions: "author_id",
     "user.fields": "description,profile_image_url,public_metrics,verified"
   });

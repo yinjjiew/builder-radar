@@ -8,7 +8,7 @@ import {
 } from "@/lib/mission";
 import { parsePostId } from "@/lib/post-url";
 import { normalizeUsername } from "@/lib/username";
-import { getPostWithAuthor, lookupUsersByUsernames, type XUser } from "@/lib/x";
+import { getPostWithAuthor, isRepostOrQuote, lookupUsersByUsernames, type XUser } from "@/lib/x";
 
 export type CurateResult = { ok: true; message: string } | { ok: false; message: string };
 
@@ -58,10 +58,7 @@ export async function blockPost(postId: string): Promise<CurateResult> {
  * An empty list is a real answer, not a missing one — it is how "this is not
  * work" is recorded, and it drops the post out of both rankings immediately.
  */
-export async function setPostCategories(
-  postId: string,
-  raw: string[]
-): Promise<CurateResult> {
+export async function setPostCategories(postId: string, raw: string[]): Promise<CurateResult> {
   const categories = sanitizeWorkKinds(raw, MAX_POST_CATEGORIES);
   const sql = getDb();
 
@@ -74,12 +71,19 @@ export async function setPostCategories(
   // now, so the row is created if it does not exist. product_category stays null:
   // it holds the model's own answer, and the model has not given one.
   await sql`
-    insert into post_insights (post_id, product_category, categories, categories_edited, categories_edited_at)
-    values (${postId}, null, ${sql.array(categories)}, true, now())
+    insert into post_insights (
+      post_id, product_category, categories,
+      categories_edited, categories_edited_at, reviewed, reviewed_at
+    )
+    values (${postId}, null, ${sql.array(categories)}, true, now(), true, now())
     on conflict (post_id) do update set
       categories = excluded.categories,
       categories_edited = true,
       categories_edited_at = now(),
+      -- Choosing a category is reviewing it, so the badge clears in the same
+      -- click rather than needing a second one.
+      reviewed = true,
+      reviewed_at = now(),
       updated_at = now()
   `;
 
@@ -87,7 +91,36 @@ export async function setPostCategories(
     ok: true,
     message: categories.length
       ? `@${post.username}'s post is now ${categories.map(productCategoryLabel).join(" + ")}.`
-      : `@${post.username}'s post is marked as not work and has left both rankings.`
+      : `@${post.username}'s post is marked deleted and has left both rankings.`
+  };
+}
+
+/**
+ * Records that a person has looked at a post's category and left it alone.
+ *
+ * Agreeing with the machine is a decision, and without a way to record it the
+ * backlog could only be cleared by changing something. categories_edited stays
+ * false, because nothing was edited; what changes is only that the post stops
+ * counting as unseen.
+ */
+export async function markPostReviewed(postId: string): Promise<CurateResult> {
+  const sql = getDb();
+
+  const [post] = await sql<Array<{ username: string }>>`
+    select c.username from posts p join creators c on c.id = p.creator_id where p.id = ${postId}
+  `;
+  if (!post) return { ok: false, message: "That post is no longer in the directory." };
+
+  await sql`
+    insert into post_insights (post_id, reviewed, reviewed_at)
+    values (${postId}, true, now())
+    on conflict (post_id) do update set
+      reviewed = true, reviewed_at = now(), updated_at = now()
+  `;
+
+  return {
+    ok: true,
+    message: `Kept as it is. @${post.username}'s post is reviewed.`
   };
 }
 
@@ -106,7 +139,10 @@ export async function setCreatorTags(
 ): Promise<CurateResult> {
   const kinds = sanitizeWorkKinds(rawKinds, MAX_WORK_KINDS);
   if (!kinds.length) {
-    return { ok: false, message: "Choose at least one kind of work for this builder." };
+    return {
+      ok: false,
+      message: "Choose at least one kind of work for this builder."
+    };
   }
 
   const sql = getDb();
@@ -120,7 +156,11 @@ export async function setCreatorTags(
     returning username
   `;
 
-  if (!creator) return { ok: false, message: "That builder is no longer in the directory." };
+  if (!creator)
+    return {
+      ok: false,
+      message: "That builder is no longer in the directory."
+    };
   return {
     ok: true,
     message: `@${creator.username} is now tagged ${kinds.map(workKindLabel).join(" + ")}.`
@@ -162,7 +202,10 @@ async function upsertGuestAuthor(author: XUser) {
 export async function addPostByLink(raw: string): Promise<CurateResult> {
   const postId = parsePostId(raw);
   if (!postId) {
-    return { ok: false, message: "That does not look like a post link. Paste the URL of a post." };
+    return {
+      ok: false,
+      message: "That does not look like a post link. Paste the URL of a post."
+    };
   }
 
   const sql = getDb();
@@ -195,10 +238,24 @@ export async function addPostByLink(raw: string): Promise<CurateResult> {
   }
 
   if (!fetched?.post) {
-    return { ok: false, message: "That post does not exist, or is private or deleted." };
+    return {
+      ok: false,
+      message: "That post does not exist, or is private or deleted."
+    };
   }
   if (!fetched.author) {
-    return { ok: false, message: "Could not identify the author of that post." };
+    return {
+      ok: false,
+      message: "Could not identify the author of that post."
+    };
+  }
+  // The like count on a repost or a quote belongs to whoever wrote the original,
+  // so admitting one would credit the wrong person and count the wrong category.
+  if (isRepostOrQuote(fetched.post)) {
+    return {
+      ok: false,
+      message: "That is a repost or a quote. Add the original post instead."
+    };
   }
 
   const creator = await upsertGuestAuthor(fetched.author);
@@ -288,7 +345,10 @@ export async function addUpByLink(
 
   const kinds = sanitizeWorkKinds(rawKinds, MAX_WORK_KINDS);
   if (!kinds.length) {
-    return { ok: false, message: `Choose what @${username} builds before adding them.` };
+    return {
+      ok: false,
+      message: `Choose what @${username} builds before adding them.`
+    };
   }
 
   const sql = getDb();
@@ -376,5 +436,8 @@ export async function restoreUp(creatorId: string): Promise<CurateResult> {
     where id = ${creatorId}
     returning username
   `;
-  return { ok: true, message: creator ? `@${creator.username} restored.` : "Builder restored." };
+  return {
+    ok: true,
+    message: creator ? `@${creator.username} restored.` : "Builder restored."
+  };
 }

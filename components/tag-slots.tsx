@@ -5,7 +5,7 @@ import { productCategoryLabel, WORK_KINDS } from "@/lib/mission";
  *
  * Two named selects rather than a multi-select or a row of checkboxes. A
  * multi-select is unusable on a phone and invisible about its own maximum; a row
- * of eight checkboxes needs client-side code to stop the third tick. Two slots
+ * of nine checkboxes needs client-side code to stop the third tick. Two slots
  * carry the rule in their shape — one main answer, one optional second — and post
  * back as two values of the same field, which the action reads with getAll.
  *

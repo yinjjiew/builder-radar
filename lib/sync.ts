@@ -1,6 +1,11 @@
 import { getDb } from "@/lib/db";
 import { seedCreators } from "@/lib/seed-creators";
-import { getPostsByIds, getUserPosts, lookupUsersByUsernames } from "@/lib/x";
+import {
+  getPostsByIds,
+  getUserPosts,
+  lookupUsersByUsernames,
+  XCreditsDepletedError
+} from "@/lib/x";
 
 // A post's likes keep climbing for roughly two days, so anything measured before
 // then is not yet comparable. Posts older than the window are left alone: their
@@ -253,6 +258,10 @@ export async function syncCreatorsAndPosts(cycleId: string | null = null) {
           postsUpserted += 1;
         }
       } catch (error) {
+        // Out of credits is not this creator's problem: every remaining request
+        // would fail the same way, so the loop stops instead of collecting sixty
+        // copies of the same message.
+        if (error instanceof XCreditsDepletedError) throw error;
         errors.push({
           username: creator.username,
           error: error instanceof Error ? error.message : String(error)
@@ -262,12 +271,32 @@ export async function syncCreatorsAndPosts(cycleId: string | null = null) {
 
     const metrics = await refreshRecentMetrics();
 
-    const detail = { creators: creators.length, profiles, postsUpserted, metrics, errors };
+    const detail = {
+      creators: creators.length,
+      profiles,
+      postsUpserted,
+      metrics,
+      errors
+    };
     await finishRun(runId, errors.length === creators.length ? "failed" : "succeeded", detail);
     await markCyclePhase(cycleId, "posts_at", { posts: detail });
     return detail;
   } catch (error) {
-    const detail = { error: error instanceof Error ? error.message : String(error), errors };
+    // Collection is the only part of the cycle that needs X. The rankings and the
+    // insight are computed from what is already stored, so an empty wallet must
+    // not read as a crash: it is recorded, the run closes, and the two later
+    // crons do their work over the existing corpus.
+    if (error instanceof XCreditsDepletedError) {
+      const detail = { creditsDepleted: true, postsUpserted, errors };
+      await finishRun(runId, "succeeded", detail);
+      await markCyclePhase(cycleId, "posts_at", { posts: detail });
+      return detail;
+    }
+
+    const detail = {
+      error: error instanceof Error ? error.message : String(error),
+      errors
+    };
     await finishRun(runId, "failed", detail);
     throw error;
   }

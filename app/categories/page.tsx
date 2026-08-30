@@ -31,8 +31,18 @@ function href(metric: PostRankMetric, window: RankWindow) {
 /** The two figures the active metric puts in front, and the two it demotes. */
 function figures(row: CategoryRow, metric: PostRankMetric) {
   return metric === "likes"
-    ? { lead: row.avgLikes, leadMedian: row.medianLikes, other: row.avgEngagement, otherMedian: row.medianEngagement }
-    : { lead: row.avgEngagement, leadMedian: row.medianEngagement, other: row.avgLikes, otherMedian: row.medianLikes };
+    ? {
+        lead: row.avgLikes,
+        leadMedian: row.medianLikes,
+        other: row.avgEngagement,
+        otherMedian: row.medianEngagement
+      }
+    : {
+        lead: row.avgEngagement,
+        leadMedian: row.medianEngagement,
+        other: row.avgLikes,
+        otherMedian: row.medianLikes
+      };
 }
 
 export default async function CategoriesPage({
@@ -48,7 +58,9 @@ export default async function CategoriesPage({
     return (
       <main className="insights-shell">
         <SiteNav current="/categories" />
-        <p className="empty-note">Connect PostgreSQL and run an enrichment pass to see categories.</p>
+        <p className="empty-note">
+          Connect PostgreSQL and run an enrichment pass to see categories.
+        </p>
       </main>
     );
   }
@@ -74,31 +86,36 @@ export default async function CategoriesPage({
         <p className="eyebrow">Work categories</p>
         <h1>Which kinds of work actually earn attention.</h1>
         <p className="mission-line">
-          Every post that handed over something made is filed under one of seven kinds of work.
-          The question this answers is which kinds an audience rewards — and therefore which kinds
-          an ordinary person would get the most out of being able to make.
+          Every post that handed over something made is filed under one of eight kinds of work. The
+          question this answers is which kinds an audience rewards — and therefore which kinds an
+          ordinary person would get the most out of being able to make.
         </p>
         <p className="mission-line">
-          The categories answer one question, &ldquo;what did this post hand over&rdquo;, and are
-          applied in a fixed order so that overlap resolves the same way every time: work
-          delivered for a client is client work whether or not it is full of 3D, a post explaining
-          a technique is education whatever the technique was, and a portfolio is a portfolio
-          however it is rendered. Posts that handed over nothing made are excluded rather than
-          given a category of their own. A post may carry a second tag where it genuinely handed
-          over two things, in which case it counts in both categories.
+          Every category describes the made thing, never the post about it, and they are applied in
+          a fixed order so overlap resolves the same way every time: work delivered for a client is
+          client work whether or not it is full of 3D, and a portfolio is a portfolio however it is
+          rendered. Posts that handed over nothing made are filed as deleted rather than given a
+          category of their own. A post may carry a second tag where it genuinely handed over two
+          things, in which case it counts in both categories.
         </p>
         <p className="mission-line">
-          <strong>Games are games.</strong> A game has an objective — levels, a score, something to
-          win or lose. A scene you can drag, spin or disturb has none, and however satisfying it is
-          to poke it belongs with the 3D and generative work it is actually made of. Both are
-          interactive; only one can be finished.
+          <strong>Educational apps teach; posts that teach do not count.</strong> A thread
+          explaining how a solar system was built hands over an explanation, which is not a made
+          thing. An interactive solar system built so you learn the planets is the category. The
+          test is whether the artifact teaches, not whether the author does.
         </p>
         <p className="mission-line">
-          <strong>Education covers the lesson and the learning product.</strong> A post about
-          how they built a solar system and an interactive solar system built so you learn the
-          planets are the same kind of work: the point of both is that somebody understands
-          something afterwards. Whether the builder does the explaining or the thing they made does
-          it is a difference in delivery, not in purpose.
+          <strong>A part or an outcome.</strong> Building blocks are what you take away and use in
+          your own work — a component, a package, or the small factory that produces one, like a
+          font or gradient generator. Practical web apps are what get a job done while you are
+          there: a workflow, a calculator, a dashboard.
+        </p>
+        <p className="mission-line">
+          <strong>Games are games, and the rest split by dimension.</strong> A game has an objective
+          — levels, a score, something to win or lose. A scene you can only drag or disturb has
+          none, and files as interactive 3D if it has depth and 2D visuals if it is flat. That line
+          is drawn on whether there is a space with a camera and perspective, not on how impressive
+          the result looks.
         </p>
 
         <div className="toggle-stack">
@@ -192,8 +209,8 @@ export default async function CategoriesPage({
             <h4>Thin samples are separated, not ranked</h4>
             <p>
               Categories with fewer than {THIN_SAMPLE} posts sit below the line. They are shown
-              because their absence is itself informative, but their numbers should not be read as
-              a ranking. The {RECENT_WINDOW_DAYS}-day view pushes more categories below that line,
+              because their absence is itself informative, but their numbers should not be read as a
+              ranking. The {RECENT_WINDOW_DAYS}-day view pushes more categories below that line,
               which is a property of the shorter range rather than of the categories.
             </p>
           </div>
@@ -251,7 +268,9 @@ export default async function CategoriesPage({
                         <span className="bar-track">
                           <span
                             className="bar-fill"
-                            style={{ width: `${Math.min(100, (lead / peak) * 100)}%` }}
+                            style={{
+                              width: `${Math.min(100, (lead / peak) * 100)}%`
+                            }}
                           />
                         </span>
                       </div>
@@ -259,7 +278,9 @@ export default async function CategoriesPage({
                     <td>{format(leadMedian)}</td>
                     <td>{formatOther(other)}</td>
                     <td>{formatOther(otherMedian)}</td>
-                    <td>{row.medianBreakout === null ? "–" : `${row.medianBreakout.toFixed(2)}×`}</td>
+                    <td>
+                      {row.medianBreakout === null ? "–" : `${row.medianBreakout.toFixed(2)}×`}
+                    </td>
                     <td>{(row.share * 100).toFixed(0)}%</td>
                     <td className={isThin ? "thin-n" : undefined}>{row.posts}</td>
                   </tr>
@@ -320,35 +341,39 @@ export default async function CategoriesPage({
           {row.examples.length ? (
             <>
               <p className="panel-question">
-                The strongest three by {metric === "likes" ? "raw likes" : "likes per 1,000 followers"}.
+                The strongest three by{" "}
+                {metric === "likes" ? "raw likes" : "likes per 1,000 followers"}.
               </p>
               <ul className="example-list">
-              {row.examples.map((post) => (
-                <li key={post.id}>
-                  <div className="example-head">
-                    <a href={`https://x.com/${post.username}`} target="_blank" rel="noreferrer">
-                      @{post.username}
-                    </a>
-                    <span>
-                      {metric === "likes"
-                        ? `${compactNumber(post.likeCount)} likes · ${post.engagement.toFixed(1)} per 1k`
-                        : `${post.engagement.toFixed(1)} per 1k · ${compactNumber(post.likeCount)} likes`}
-                      {post.breakout === null ? "" : ` · ${post.breakout.toFixed(1)}× their median`}
-                    </span>
-                  </div>
-                  <p>{post.note ?? cleanPostText(post.text).slice(0, 180)}</p>
-                  <div className="example-foot">
-                    {post.categories.map((category) => (
-                      <span className="tag" key={category}>
-                        {productCategoryLabel(category)}
+                {row.examples.map((post) => (
+                  <li key={post.id}>
+                    <div className="example-head">
+                      <a href={`https://x.com/${post.username}`} target="_blank" rel="noreferrer">
+                        @{post.username}
+                      </a>
+                      <span>
+                        {metric === "likes"
+                          ? `${compactNumber(post.likeCount)} likes · ${post.engagement.toFixed(1)} per 1k`
+                          : `${post.engagement.toFixed(1)} per 1k · ${compactNumber(post.likeCount)} likes`}
+                        {post.breakout === null
+                          ? ""
+                          : ` · ${post.breakout.toFixed(1)}× their median`}
                       </span>
-                    ))}
-                    <a href={post.url} target="_blank" rel="noreferrer" className="rank-link">
-                      Open post
-                    </a>
-                  </div>
-                </li>
-              ))}
+                    </div>
+                    <p>{post.note ?? cleanPostText(post.text).slice(0, 180)}</p>
+                    <div className="example-foot">
+                      {post.reviewed ? null : <span className="tag tag-muted">not reviewed</span>}
+                      {post.categories.map((category) => (
+                        <span className="tag" key={category}>
+                          {productCategoryLabel(category)}
+                        </span>
+                      ))}
+                      <a href={post.url} target="_blank" rel="noreferrer" className="rank-link">
+                        Open post
+                      </a>
+                    </div>
+                  </li>
+                ))}
               </ul>
             </>
           ) : (
@@ -360,8 +385,8 @@ export default async function CategoriesPage({
       <footer className="insights-footer">
         <p className="footnote">
           Categories are assigned by the model from a fixed vocabulary with written boundary rules,
-          applied in order, so the same kind of work lands in the same category every time.
-          Changing those rules re-tags the whole corpus rather than mixing two standards, because a
+          applied in order, so the same kind of work lands in the same category every time. Changing
+          those rules re-tags the whole corpus rather than mixing two standards, because a
           leaderboard built from two different definitions would partly be ranking the definition.
         </p>
         <p className="footnote">

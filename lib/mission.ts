@@ -100,50 +100,53 @@ export const THEME_LABELS: Record<Theme, string> = {
  * The kind of work a post is about, and the dimension the category ranking
  * groups by.
  *
- * This is the third attempt and the first one that survived being read against
- * the corpus. The first set could not be counted at all — "utility-tool",
- * "web-app" and "dev-tool" sat side by side with no boundary between them. The
- * second fixed the boundaries but kept twelve values, which split the corpus so
- * finely that eight of them ended up with fewer than five posts each: pairs like
- * component-library and motion-interaction, or dev-tool and creative-tool, were
- * being told apart on a distinction nobody cared about while both were too thin
- * to rank. Values with real sample sizes answer more questions than precise ones
- * that each measure noise, which is why the set grows only when a kind of work is
- * genuinely being lost rather than whenever a finer distinction is available.
+ * Arrived at by reading the corpus against each draft and correcting by hand.
+ * The first set could not be counted at all — "utility-tool", "web-app" and
+ * "dev-tool" sat side by side with no boundary between them. The second fixed
+ * the boundaries but kept twelve values, which split the corpus so finely that
+ * eight of them held fewer than five posts each. This one settles two questions
+ * the earlier sets got wrong:
  *
- * Two properties make the set countable, and both matter more than the names:
+ *   Every value describes the artifact, never the post. A category that meant
+ *   "the post is teaching" swept up tutorials about work belonging in five
+ *   different buckets, which is why explanation now falls under not-work and
+ *   'education' means the made thing itself teaches.
  *
- *   Every value answers the same question. "What did this post hand over?" A
- *   category is never about who it was for, how it was made, or how finished it
- *   is; those are separate columns.
+ *   The interactive split is by dimension, not by feel. "3D, visuals & toys" was
+ *   one bucket holding a raymarched world and a CSS gradient study, and no
+ *   definition could keep those together honestly. "Is there a space with depth?"
+ *   is answerable the same way by two different readers, which is the only
+ *   property a boundary actually needs.
  *
- *   The set is ordered, and the first match wins. Overlap is unavoidable — a
- *   client site can be full of 3D, a portfolio can be a shader demo — so
- *   ambiguity is resolved by precedence rather than by the model's mood, which
- *   is what stops the same post landing in a different bucket every cycle.
+ * The set is ordered and the first match wins. Overlap is unavoidable — a client
+ * site can be full of 3D, a portfolio can be a shader demo — so ambiguity is
+ * resolved by precedence rather than by the model's mood, which is what stops
+ * the same post landing in a different bucket every cycle.
  */
 export const PRODUCT_CATEGORIES = [
-  "education",
   "client-work",
+  "education",
   "game",
-  "utility-tool",
-  "own-product",
-  "interface-craft",
+  "own-site",
+  "building-block",
+  "web-app",
   "interactive-3d",
+  "visual-2d",
   "not-work"
 ] as const;
 
 export type ProductCategory = (typeof PRODUCT_CATEGORIES)[number];
 
 export const PRODUCT_CATEGORY_LABELS: Record<ProductCategory, string> = {
-  education: "Education & learning",
   "client-work": "Client & brand work",
+  education: "Educational apps",
   game: "Games",
-  "utility-tool": "Tools that get something done",
-  "own-product": "Their own site or product",
-  "interface-craft": "Interface & UI components",
-  "interactive-3d": "Interactive 3D, visuals & toys",
-  "not-work": "Not work"
+  "own-site": "Personal & studio sites",
+  "building-block": "Building blocks",
+  "web-app": "Practical web apps",
+  "interactive-3d": "Interactive 3D",
+  "visual-2d": "2D visuals & toys",
+  "not-work": "Deleted"
 };
 
 /** The only category that means "this post did not hand over any made thing". */
@@ -154,9 +157,10 @@ export const NOT_WORK: ProductCategory = "not-work";
  * both, so a builder's stated output and the ranking of what resonates can be
  * read against each other.
  */
-export const WORK_KINDS = PRODUCT_CATEGORIES.filter(
-  (value) => value !== NOT_WORK
-) as Exclude<ProductCategory, "not-work">[];
+export const WORK_KINDS = PRODUCT_CATEGORIES.filter((value) => value !== NOT_WORK) as Exclude<
+  ProductCategory,
+  "not-work"
+>[];
 
 /**
  * A post may carry two categories at most, and a builder two kinds of work.
@@ -204,63 +208,79 @@ export function sanitizeWorkKinds(values: unknown, limit = MAX_POST_CATEGORIES) 
 export const PRODUCT_CATEGORY_RULES = `Work through these in order and stop at the first one that fits. Earlier rules
 beat later ones even when a later one also seems to apply.
 
-1. not-work — the post hands over nothing that was made. An opinion, a question,
-   a joke, industry news, a hiring notice, conference or personal life, praise
-   for someone else's work, or an award announcement that does not show the work
-   itself. If the only thing being offered is a thought, it is not-work.
-2. education — the post exists so that somebody learns something. It takes two
-   shapes and they are one category, because the reason for the work is the same
-   in both. Either the builder does the explaining — a tutorial, a written
-   breakdown of a technique, a course, a livestream, a talk, a published lesson —
-   or they built a thing that does the explaining without them: an interactive
-   explainer, a learning app, a course platform, a study aid, a simulation or
-   visualisation made so a concept becomes clear.
+Every category describes the artifact — the made thing the post hands over. None
+of them describes the post. This is the rule that earlier versions broke: a
+category that meant "the post is teaching" collected tutorials about work that
+belonged in five different buckets, and the counts stopped meaning anything.
 
-   Choose this even when the subject is 3D or a client site, because a post that
-   exists to teach is teaching whatever it teaches about. It beats everything
-   below, so a game made to teach and an explanatory visualisation are both
+1. not-work — no made thing is handed over. An opinion, a question, a joke,
+   industry news, a hiring notice, conference or personal life, praise for
+   someone else's work, an award announcement that does not show the work itself.
+
+   A post that only explains belongs here too, and this is the change: a tutorial
+   thread, a written breakdown, a CSS tip, a livestream announcement, a
+   conference talk. The explanation is not an artifact. If the post also links to
+   something usable — a demo, a repo, a component, a live page — categorise that
+   thing instead and ignore the fact that the post explains it.
+2. client-work — the artifact was made for someone else: a client, a brand, an
+   employer. "New work", "we designed and built X for Y", a case study, a launch
+   with a company name, an award for a named brand project. Choose this however
+   the work was built, including when it is heavily 3D or animated, because who
+   it was for is the most reliable fact about it.
+3. education — the artifact itself teaches. Its content is the lesson: an
+   interactive explainer, a learning app, a course or lesson platform, a study
+   aid, a simulation or visualisation built so that a concept becomes clear, a
+   thing made to teach children or students.
+
+   The test is whether the thing teaches, not whether the post teaches. A post
+   explaining how the author built a solar system is rule 1; an interactive solar
+   system built so you learn the planets is this. Because this beats everything
+   below, a game made to teach and an explanatory visualisation are both
    education: what a thing is for says more than what it is made of.
-3. client-work — made for someone else: a client, a brand, or an employer.
-   "New work", "we designed and built X for Y", a case study, a launch with a
-   company name, an award for a named brand project. Choose this however the work
-   was built, including when it is heavily 3D or animated, because who it was for
-   is the most reliable fact about it.
 4. game — a game. Something with rules and an objective that a person plays:
    levels, a score, a win or a lose, a puzzle to solve, a character to control,
    an opponent to beat. The test is whether it can be played to completion or to
    failure. A scene you can drag, spin, click or disturb has no objective and is
-   not a game however satisfying it is to poke — that is rule 8. Both are
-   interactive; only one can be won.
-5. utility-tool — the thing exists to get something done. Anything someone opens
-   to produce an outcome: a utility, an editor, a generator, a converter, a
-   playground, a dashboard, an app that saves someone time at work or in daily
-   life, and equally a library, framework, engine or plugin that does that job
-   for people who write code. The test is whether a person would use it to
-   accomplish something rather than to look at it. Choose this over own-product
-   even when the author built and owns the tool, because what it is matters more
-   than who owns it.
-6. own-product — the author's own presence or property, not a tool: their
-   portfolio, their studio site, a personal site, a personal blog, a redesign of
-   their own site, or their own product where the post is about the launch and
-   the brand rather than about what it does for you. It must genuinely be theirs;
-   work for an employer is client-work. Choose this over the two categories below
-   even when the site is full of 3D or animation, because a portfolio is a
-   portfolio however it is rendered.
-7. interface-craft — the artifact is a piece of interface. A reusable component,
-   a UI kit or design system, a set of transitions or effects other people can
-   drop in, a hover or scroll behaviour, a micro-interaction, an animated
-   component, a layout or typographic detail. Both the still thing and its
-   behaviour belong here: a button someone can install and the way that button
-   moves are the same kind of work. Choose this over interactive-3d whenever the
-   thing shown is part of an interface, even if it is rendered with WebGL.
-8. interactive-3d — the artifact is a scene or a visual, shown for what it looks
-   like rather than for what it does: a 3D scene, a shader, a simulation, a
-   particle or fluid study, a generative or audiovisual piece, a WebGL
-   experiment, or a data-driven visual made to be looked at and explored. Toys
-   belong here too — a blob that follows the cursor, a cloth you can pull, a
-   scene you can throw things around in. Being able to touch it does not make it
-   a game; there is nothing to win. If there is no interface and no task, and the
-   point is the image, it is this.
+   not a game however satisfying it is to poke — that is rule 7 or 8.
+5. own-site — the artifact presents a person or a company: their portfolio, their
+   studio site, a personal site or blog, a personal log of their own life or
+   work, a redesign of their own site, a company page showing off its own output.
+   The point is presenting whose it is. It must genuinely be theirs; the same
+   page built for an employer is client-work. Choose this over everything below
+   even when the site is full of 3D, because a portfolio is a portfolio however
+   it is rendered — including when they open-source it, since it is still their
+   portfolio.
+6. building-block — the artifact is a part, and you take it away and use it in
+   your own work. A component library, a UI kit or design system, a set of
+   transitions or effects other people can drop in, an npm package, a framework,
+   engine or plugin, and equally the small factory that produces such a part: a
+   font editor, an icon or image generator, a button or gradient generator, a
+   mockup maker, a shader or asset exporter.
+
+   The test is what you leave with. If you leave with a piece that goes into
+   something you are building, it is this. If you leave with an answer or a
+   finished task, it is rule 7.
+7. web-app — the artifact is a web app that gets something done. You open it and
+   it does a job for you: a workflow someone assembled, a calculator, a
+   converter, a dashboard, an editor, a planner, an app that saves time at work
+   or in daily life. The test is that what you leave with is an outcome rather
+   than a part.
+8. interactive-3d — the artifact is a three-dimensional scene, shown for what it
+   looks like rather than for what it does. There is a space with depth: a
+   camera, perspective, geometry, a model, a world you can move through or orbit.
+   Three.js and WebGL scenes, 3D product showcases with no task, raymarched
+   scenes, 3D particle and fluid simulations, 3D toys you can push around.
+9. visual-2d — the artifact is a flat visual or a flat toy: canvas, SVG or CSS
+   visuals, 2D generative art, a flat shader pattern, a gradient or noise study,
+   a flow field, a pixel or image effect, a cursor-following blob, a 2D physics
+   toy, a data visualisation drawn on a plane.
+
+   Rules 8 and 9 are told apart by one question only: is there a
+   three-dimensional space? Depth, perspective, a camera, geometry — then 8. Flat
+   — then 9. Do not use how impressive it looks, or the library it was built
+   with, and note that a fragment shader can be either: a raymarched scene is 3D,
+   a flat pattern is 2D. Toys are not their own category; a 3D toy is 8 and a 2D
+   toy is 9.
 
 Choose exactly one, always. If two rules seem to fit, the earlier one wins; that
 is what the order is for, and hedging is what made an earlier pass of this corpus
@@ -268,9 +288,9 @@ impossible to count.
 
 Two habits to avoid, both seen in earlier passes of this corpus:
   A post can show real work in a video or a link with almost no words. "progress
-  63", "new stream", or a bare link from someone whose whole feed is 3D scenes is
-  still work — use what you know about the author and pick the kind they build.
-  Do not reach for not-work just because the text is short.
+  63" or a bare link from someone whose whole feed is 3D scenes is still work —
+  use what you know about the author and pick the kind they build. Do not reach
+  for not-work just because the text is short.
   The reverse is also true: enthusiasm about someone else's release, a thread of
   advice, or a screenshot of revenue is not-work no matter how long it is.`;
 
@@ -340,13 +360,14 @@ export const AUDIENCE_LABELS: Record<Audience, string> = {
  * where the sentence around them already supplies the verb.
  */
 export const WORK_KIND_LABELS: Record<ProductCategory, string> = {
-  education: "education & learning",
   "client-work": "client work",
+  education: "education",
   game: "games",
-  "utility-tool": "tools",
-  "own-product": "own products",
-  "interface-craft": "interface & UI",
-  "interactive-3d": "3D, visuals & toys",
+  "own-site": "personal & studio sites",
+  "building-block": "building blocks",
+  "web-app": "web apps",
+  "interactive-3d": "3D",
+  "visual-2d": "2D visuals",
   "not-work": "unclear"
 };
 

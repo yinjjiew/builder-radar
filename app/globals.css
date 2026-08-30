@@ -732,6 +732,14 @@ footer p { color: rgba(255,255,255,.46); font-size: 12px; }
   align-items: start; padding: 18px 0; border-bottom: 1px solid var(--line);
 }
 .review-body { min-width: 0; }
+.review-actions { display: grid; gap: 8px; align-content: start; }
+.keep-form { display: grid; }
+.keep-form button { width: 100%; border: 1px dashed var(--line); padding: 7px 14px; cursor: pointer; font-size: 12px; }
+
+/* An unreviewed post is a to-do rather than a warning, so the flag is legible
+   without competing with the numbers it sits beside. */
+.flag-unreviewed { background: #f2e6c8; border-color: #c9a961; }
+
 .review-form { display: grid; gap: 8px; }
 .review-form .tag-slots { display: grid; gap: 8px; }
 .review-form button { border: 1px solid var(--ink); padding: 9px 18px; cursor: pointer; }

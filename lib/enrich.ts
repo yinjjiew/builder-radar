@@ -111,7 +111,13 @@ async function selectCandidates(): Promise<Candidate[]> {
         order by p.created_at desc limit ${ANALYSIS_WINDOW}
       ) recent
       left join post_insights pi on pi.post_id = recent.id
-      where pi.post_id is null or pi.prompt_version < ${PROMPT_VERSION}
+      -- Never re-reads a post that already has a row. A category, once written,
+      -- is final: the owner reviews the corpus by hand, and a cycle that
+      -- re-judged old posts would undo that work every six hours and make the
+      -- rankings move for reasons nobody chose. Only genuinely new posts are
+      -- classified, which is also why a prompt change no longer sweeps the
+      -- corpus — the vocabulary is applied going forward, not retroactively.
+      where pi.post_id is null
     ) untagged on true
     -- Guests are included so that a post added by hand gets a product category.
     -- Without it the post would appear in the post rank but be invisible to the
@@ -185,36 +191,25 @@ async function enrichCreator(candidate: Candidate) {
   if (!focus) return { username: candidate.username, tagged: 0, summarised: false };
 
   const model = aiModel();
+  let written = 0;
   for (const tag of focus.posts) {
-    await sql`
+    // `do nothing` rather than `do update`: a row that exists was either reviewed
+    // or is waiting to be, and in both cases its category is not the cycle's to
+    // change. Arriving unreviewed is what puts a new post in the owner's queue.
+    const rows = await sql`
       insert into post_insights (
         post_id, themes, artifact, product_category, categories, intent, audience,
-        nocode_signal, note, model, prompt_version
+        nocode_signal, note, model, prompt_version, reviewed
       ) values (
         ${tag.id}, ${sql.array(tag.themes)}, ${tag.artifact}, ${tag.productCategory},
         ${sql.array(categoriesFor(tag))},
         ${tag.intent}, ${tag.audience}, ${tag.nocodeSignal}, ${tag.note},
-        ${model}, ${PROMPT_VERSION}
+        ${model}, ${PROMPT_VERSION}, false
       )
-      on conflict (post_id) do update set
-        themes = excluded.themes,
-        artifact = excluded.artifact,
-        product_category = excluded.product_category,
-        -- A category set by hand is the final word. Everything else on the row is
-        -- still refreshed, because the owner corrected the category, not the
-        -- theme list or the note.
-        categories = case
-          when post_insights.categories_edited then post_insights.categories
-          else excluded.categories
-        end,
-        intent = excluded.intent,
-        audience = excluded.audience,
-        nocode_signal = excluded.nocode_signal,
-        note = excluded.note,
-        model = excluded.model,
-        prompt_version = excluded.prompt_version,
-        updated_at = now()
+      on conflict (post_id) do nothing
+      returning post_id
     `;
+    written += rows.length;
   }
 
   // Nothing the directory card shows is written here. A builder's tags and the
@@ -232,7 +227,7 @@ async function enrichCreator(candidate: Candidate) {
     where id = ${candidate.id}
   `;
 
-  return { username: candidate.username, tagged: focus.posts.length, summarised: true };
+  return { username: candidate.username, tagged: written, summarised: true };
 }
 
 /**

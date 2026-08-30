@@ -5,12 +5,13 @@ import {
   addPostByLink,
   addUpByLink,
   blockPost,
+  markPostReviewed,
   removeUp,
   restoreUp,
   setCreatorTags,
   setPostCategories,
   unblockPost,
-  type CurateResult,
+  type CurateResult
 } from "@/lib/curate";
 import { requireAdmin } from "@/lib/role";
 
@@ -58,7 +59,7 @@ function tagsFrom(formData: FormData) {
 
 export async function deletePostAction(
   _previous: CurateResult | null,
-  formData: FormData,
+  formData: FormData
 ): Promise<CurateResult> {
   await requireAdmin();
   const postId = String(formData.get("postId") ?? "").trim();
@@ -68,7 +69,7 @@ export async function deletePostAction(
 
 export async function addPostAction(
   _previous: CurateResult | null,
-  formData: FormData,
+  formData: FormData
 ): Promise<CurateResult> {
   await requireAdmin();
   const link = String(formData.get("link") ?? "");
@@ -77,7 +78,7 @@ export async function addPostAction(
 
 export async function unblockPostAction(
   _previous: CurateResult | null,
-  formData: FormData,
+  formData: FormData
 ): Promise<CurateResult> {
   await requireAdmin();
   const postId = String(formData.get("postId") ?? "").trim();
@@ -87,7 +88,7 @@ export async function unblockPostAction(
 
 export async function addUpAction(
   _previous: CurateResult | null,
-  formData: FormData,
+  formData: FormData
 ): Promise<CurateResult> {
   await requireAdmin();
   const link = String(formData.get("link") ?? "");
@@ -97,7 +98,7 @@ export async function addUpAction(
 
 export async function setCreatorTagsAction(
   _previous: CurateResult | null,
-  formData: FormData,
+  formData: FormData
 ): Promise<CurateResult> {
   await requireAdmin();
   const creatorId = String(formData.get("creatorId") ?? "").trim();
@@ -108,7 +109,7 @@ export async function setCreatorTagsAction(
 
 export async function setPostCategoriesAction(
   _previous: CurateResult | null,
-  formData: FormData,
+  formData: FormData
 ): Promise<CurateResult> {
   await requireAdmin();
   const postId = String(formData.get("postId") ?? "").trim();
@@ -116,9 +117,19 @@ export async function setPostCategoriesAction(
   return refresh(await setPostCategories(postId, tagsFrom(formData)));
 }
 
+export async function markPostReviewedAction(
+  _previous: CurateResult | null,
+  formData: FormData
+): Promise<CurateResult> {
+  await requireAdmin();
+  const postId = String(formData.get("postId") ?? "").trim();
+  if (!postId) return { ok: false, message: "No post specified." };
+  return refresh(await markPostReviewed(postId));
+}
+
 export async function removeUpAction(
   _previous: CurateResult | null,
-  formData: FormData,
+  formData: FormData
 ): Promise<CurateResult> {
   await requireAdmin();
   const creatorId = String(formData.get("creatorId") ?? "").trim();
@@ -128,7 +139,7 @@ export async function removeUpAction(
 
 export async function restoreUpAction(
   _previous: CurateResult | null,
-  formData: FormData,
+  formData: FormData
 ): Promise<CurateResult> {
   await requireAdmin();
   const creatorId = String(formData.get("creatorId") ?? "").trim();

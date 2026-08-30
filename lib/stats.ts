@@ -121,6 +121,8 @@ export type BreakoutRow = {
   mature: boolean;
   nocodeSignal: number | null;
   addedByHand: boolean;
+  /** False until a person has looked at the category on this post. */
+  reviewed: boolean;
 };
 
 export type NocodeSplit = {
@@ -182,9 +184,7 @@ export async function getCorpusHealth(): Promise<CorpusHealth> {
   if (!hasDatabase()) return empty;
 
   const sql = getDb();
-  const [row] = await sql<
-    Array<Record<string, unknown>>
-  >`
+  const [row] = await sql<Array<Record<string, unknown>>>`
     with base as (
       select p.id, p.creator_id, p.created_at,
              (p.metrics_refreshed_at >= p.created_at + ${MATURITY}::interval) as mature
@@ -367,7 +367,8 @@ export async function getBreakoutPosts(limit = 12): Promise<BreakoutRow[]> {
       s.id, s.username, s.text, s.url, s.created_at,
       s.like_count, s.repost_count, s.followers_count,
       s.engagement, s.breakout,
-      pi.note, pi.themes, pi.artifact, pi.categories, pi.nocode_signal
+      pi.note, pi.themes, pi.artifact, pi.categories, pi.nocode_signal,
+      coalesce(pi.reviewed, false) as reviewed
     from scored s
     left join post_insights pi on pi.post_id = s.id
     where s.mature and s.breakout is not null
@@ -386,7 +387,8 @@ export async function getTopEngagementPosts(limit = 12): Promise<BreakoutRow[]> 
       s.id, s.username, s.text, s.url, s.created_at,
       s.like_count, s.repost_count, s.followers_count,
       s.engagement, s.breakout,
-      pi.note, pi.themes, pi.artifact, pi.categories, pi.nocode_signal
+      pi.note, pi.themes, pi.artifact, pi.categories, pi.nocode_signal,
+      coalesce(pi.reviewed, false) as reviewed
     from scored s
     left join post_insights pi on pi.post_id = s.id
     where s.mature and s.engagement is not null
@@ -402,7 +404,8 @@ function toBreakoutRow(row: Record<string, unknown>): BreakoutRow {
     username: String(row.username),
     text: String(row.text ?? ""),
     url: String(row.url ?? ""),
-    createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
+    createdAt:
+      row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
     likeCount: num(row.like_count),
     repostCount: num(row.repost_count),
     followersCount: num(row.followers_count),
@@ -414,7 +417,8 @@ function toBreakoutRow(row: Record<string, unknown>): BreakoutRow {
     categories: Array.isArray(row.categories) ? (row.categories as string[]) : [],
     mature: row.mature === undefined ? true : Boolean(row.mature),
     nocodeSignal: maybeNum(row.nocode_signal),
-    addedByHand: Boolean(row.added_by_hand)
+    addedByHand: Boolean(row.added_by_hand),
+    reviewed: Boolean(row.reviewed)
   };
 }
 
@@ -448,7 +452,8 @@ export async function getTopPosts(
       s.like_count, s.repost_count, s.followers_count,
       s.engagement, s.breakout, s.mature,
       p.added_by_hand,
-      pi.note, pi.themes, pi.artifact, pi.categories, pi.nocode_signal
+      pi.note, pi.themes, pi.artifact, pi.categories, pi.nocode_signal,
+      coalesce(pi.reviewed, false) as reviewed
     from scored s
     join posts p on p.id = s.id
     left join post_insights pi on pi.post_id = s.id
@@ -533,6 +538,7 @@ export async function getCategoryStats(
         s.like_count, s.repost_count, s.followers_count,
         s.engagement, s.breakout, s.mature,
         pi.note, pi.themes, pi.artifact, pi.categories, pi.nocode_signal,
+        coalesce(pi.reviewed, false) as reviewed,
         cat as category_key,
         row_number() over (partition by cat order by ${exampleOrder}) as rank
       from scored s

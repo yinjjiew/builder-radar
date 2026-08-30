@@ -34,6 +34,7 @@ export type ReviewPost = {
   edited: boolean;
   addedByHand: boolean;
   tagged: boolean;
+  reviewed: boolean;
   note: string | null;
 };
 
@@ -41,6 +42,7 @@ export type ReviewCounts = {
   total: number;
   none: number;
   edited: number;
+  unreviewed: number;
   byCategory: Record<string, number>;
 };
 
@@ -49,7 +51,7 @@ export function parseReviewSort(raw: string | undefined): ReviewSort {
 }
 
 export function parseReviewFilter(raw: string | undefined): ReviewFilter {
-  if (raw === "none" || raw === "edited") return raw;
+  if (raw === "none" || raw === "edited" || raw === "unreviewed") return raw;
   return WORK_KINDS.includes(raw as never) ? (raw as string) : "all";
 }
 
@@ -59,7 +61,13 @@ const num = (value: unknown) => {
 };
 
 export async function getReviewCounts(): Promise<ReviewCounts> {
-  const empty: ReviewCounts = { total: 0, none: 0, edited: 0, byCategory: {} };
+  const empty: ReviewCounts = {
+    total: 0,
+    none: 0,
+    edited: 0,
+    unreviewed: 0,
+    byCategory: {}
+  };
   if (!hasDatabase()) return empty;
   const sql = getDb();
 
@@ -67,7 +75,8 @@ export async function getReviewCounts(): Promise<ReviewCounts> {
     select
       count(*) as total,
       count(*) filter (where coalesce(array_length(pi.categories, 1), 0) = 0) as none,
-      count(*) filter (where coalesce(pi.categories_edited, false)) as edited
+      count(*) filter (where coalesce(pi.categories_edited, false)) as edited,
+      count(*) filter (where not coalesce(pi.reviewed, false)) as unreviewed
     from posts p
     join creators c on c.id = p.creator_id
     left join post_insights pi on pi.post_id = p.id
@@ -88,6 +97,7 @@ export async function getReviewCounts(): Promise<ReviewCounts> {
     total: num(totals?.total),
     none: num(totals?.none),
     edited: num(totals?.edited),
+    unreviewed: num(totals?.unreviewed),
     byCategory: Object.fromEntries(perCategory.map((row) => [String(row.key), num(row.posts)]))
   };
 }
@@ -113,7 +123,9 @@ export async function getReviewPosts({
         ? sql`coalesce(array_length(pi.categories, 1), 0) = 0`
         : filter === "edited"
           ? sql`coalesce(pi.categories_edited, false)`
-          : sql`pi.categories @> array[${filter}]::text[]`;
+          : filter === "unreviewed"
+            ? sql`not coalesce(pi.reviewed, false)`
+            : sql`pi.categories @> array[${filter}]::text[]`;
 
   const order =
     sort === "recent"
@@ -128,6 +140,7 @@ export async function getReviewPosts({
       c.username, c.name, c.followers_count,
       coalesce(pi.categories, '{}') as categories,
       coalesce(pi.categories_edited, false) as categories_edited,
+      coalesce(pi.reviewed, false) as reviewed,
       (pi.post_id is not null) as tagged,
       pi.note,
       (p.like_count::float8 / nullif(c.followers_count, 0) * 1000) as engagement
@@ -157,6 +170,7 @@ export async function getReviewPosts({
     edited: Boolean(row.categories_edited),
     addedByHand: Boolean(row.added_by_hand),
     tagged: Boolean(row.tagged),
+    reviewed: Boolean(row.reviewed),
     note: row.note ? String(row.note) : null
   }));
 }
@@ -177,5 +191,8 @@ export async function getReviewAuthors(): Promise<Array<{ username: string; post
     group by c.username
     order by count(p.id) desc, lower(c.username)
   `;
-  return rows.map((row) => ({ username: String(row.username), posts: num(row.posts) }));
+  return rows.map((row) => ({
+    username: String(row.username),
+    posts: num(row.posts)
+  }));
 }

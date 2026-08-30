@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { ActionForm } from "@/components/action-form";
 import { SiteNav } from "@/components/site-nav";
 import { TagSlots } from "@/components/tag-slots";
-import { setPostCategoriesAction } from "@/app/curate/actions";
+import { markPostReviewedAction, setPostCategoriesAction } from "@/app/curate/actions";
 import { hasDatabase } from "@/lib/db";
 import { cleanPostText, compactNumber } from "@/lib/format";
 import { productCategoryLabel, WORK_KINDS } from "@/lib/mission";
@@ -78,12 +78,13 @@ export default async function ReviewPage({ searchParams }: { searchParams: Promi
 
   const filters = [
     { key: "all", label: "Everything", count: counts.total },
+    { key: "unreviewed", label: "Never reviewed", count: counts.unreviewed },
     ...WORK_KINDS.map((kind) => ({
       key: kind,
       label: productCategoryLabel(kind),
       count: counts.byCategory[kind] ?? 0
     })),
-    { key: "none", label: "Not work / untagged", count: counts.none },
+    { key: "none", label: "Deleted", count: counts.none },
     { key: "edited", label: "Edited by hand", count: counts.edited }
   ];
 
@@ -126,11 +127,15 @@ export default async function ReviewPage({ searchParams }: { searchParams: Promi
           </div>
           <div>
             <strong>{counts.none}</strong>
-            <span>not work</span>
+            <span>deleted</span>
           </div>
           <div>
             <strong>{counts.edited}</strong>
             <span>set by hand</span>
+          </div>
+          <div>
+            <strong>{counts.unreviewed}</strong>
+            <span>never reviewed</span>
           </div>
         </div>
       </header>
@@ -138,9 +143,10 @@ export default async function ReviewPage({ searchParams }: { searchParams: Promi
       <section className="panel">
         <h3>Narrow it down</h3>
         <p className="panel-question">
-          Start with <strong>Not work / untagged</strong> sorted by likes: a popular post sitting in
-          there is either a genuine take or a piece of work that was misfiled, and the second kind
-          is what is missing from the rankings.
+          Start with <strong>Never reviewed</strong> sorted by likes, which is the backlog: the
+          posts nobody has looked at, most popular first. <strong>Deleted</strong> is worth a second
+          pass too — a popular post sitting in there is either a genuine take or a piece of work
+          that was misfiled, and the second kind is missing from the rankings.
         </p>
 
         <div className="filter-chips" role="group" aria-label="Filter by category">
@@ -208,15 +214,19 @@ export default async function ReviewPage({ searchParams }: { searchParams: Promi
                   </a>
                   <span className="rank-sub">
                     {compactNumber(post.likeCount)} likes
-                    {post.engagement === null ? "" : ` · ${post.engagement.toFixed(1)} per 1k`} ·{" "}
+                    {post.engagement === null
+                      ? ""
+                      : ` · ${post.engagement.toFixed(1)} per 1k`} ·{" "}
                     {new Date(post.createdAt).toLocaleDateString("en", {
                       month: "short",
                       day: "numeric",
                       year: "numeric"
                     })}
+                    {post.reviewed ? null : (
+                      <span className="fresh-flag flag-unreviewed">not reviewed</span>
+                    )}
                     {post.edited ? <span className="fresh-flag">set by hand</span> : null}
                     {post.addedByHand ? <span className="fresh-flag">added by hand</span> : null}
-                    {post.tagged ? null : <span className="fresh-flag">never tagged</span>}
                   </span>
                 </div>
 
@@ -230,7 +240,7 @@ export default async function ReviewPage({ searchParams }: { searchParams: Promi
                       </span>
                     ))
                   ) : (
-                    <span className="tag tag-muted">not work</span>
+                    <span className="tag tag-muted">deleted</span>
                   )}
                   <a href={post.url} target="_blank" rel="noreferrer" className="rank-link">
                     Open post
@@ -238,17 +248,28 @@ export default async function ReviewPage({ searchParams }: { searchParams: Promi
                 </div>
               </div>
 
-                      <ActionForm action={setPostCategoriesAction} className="review-form">
-                        <input type="hidden" name="postId" value={post.id} />
-                        <TagSlots
-                  selected={post.categories}
-                  idPrefix={`post-${post.id}`}
-                  primaryEmptyLabel="Not work"
-                />
-                        <button type="submit" className="approve-button">
-                          Save
-                        </button>
-                      </ActionForm>
+              <div className="review-actions">
+                <ActionForm action={setPostCategoriesAction} className="review-form">
+                  <input type="hidden" name="postId" value={post.id} />
+                  <TagSlots
+                    selected={post.categories}
+                    idPrefix={`post-${post.id}`}
+                    primaryEmptyLabel="Deleted"
+                  />
+                  <button type="submit" className="approve-button">
+                    Save
+                  </button>
+                </ActionForm>
+
+                {post.reviewed ? null : (
+                  <ActionForm action={markPostReviewedAction} className="keep-form">
+                    <input type="hidden" name="postId" value={post.id} />
+                    <button type="submit" className="ghost-button">
+                      Looks right, keep it
+                    </button>
+                  </ActionForm>
+                )}
+              </div>
             </li>
           ))}
         </ul>
@@ -257,7 +278,10 @@ export default async function ReviewPage({ searchParams }: { searchParams: Promi
 
         <div className="pager">
           {page > 1 ? (
-            <Link href={link({ filter, sort, author, page: String(page - 1) })} className="rank-link">
+            <Link
+              href={link({ filter, sort, author, page: String(page - 1) })}
+              className="rank-link"
+            >
               ← Previous
             </Link>
           ) : (
@@ -265,7 +289,10 @@ export default async function ReviewPage({ searchParams }: { searchParams: Promi
           )}
           <span className="footnote">Page {page}</span>
           {posts.length === REVIEW_PAGE_SIZE ? (
-            <Link href={link({ filter, sort, author, page: String(page + 1) })} className="rank-link">
+            <Link
+              href={link({ filter, sort, author, page: String(page + 1) })}
+              className="rank-link"
+            >
               Next →
             </Link>
           ) : (
@@ -282,9 +309,10 @@ export default async function ReviewPage({ searchParams }: { searchParams: Promi
           a hedge between two candidates is worse than picking one, because it inflates both.
         </p>
         <p className="footnote">
-          Choosing <em>Not work</em> is a real answer rather than a blank one: it records that the
+          Choosing <em>Deleted</em> is a real answer rather than a blank one: it records that the
           post handed over nothing made and drops it out of both rankings, which is what should
-          happen to a take, a question or a conference photo however well it performed.
+          happen to a take, a question, a tutorial thread or a conference photo however well it
+          performed. It is a category, not a removal — the post stays here, and stays reversible.
         </p>
       </footer>
     </main>

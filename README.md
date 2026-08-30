@@ -15,13 +15,13 @@ The project is ready for GitHub and Vercel. It uses:
 
 ## Pages
 
-| Path | What it answers |
-|---|---|
-| `/` | Who is in the directory, ranked by followers |
-| `/posts` | The 30 strongest **work** posts, by raw likes or by likes per 1,000 followers, over all history or the last 14 days |
+| Path          | What it answers                                                                                                                                |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/`           | Who is in the directory, ranked by followers                                                                                                   |
+| `/posts`      | The 30 strongest **work** posts, by raw likes or by likes per 1,000 followers, over all history or the last 14 days                            |
 | `/categories` | Which kinds of work earn attention, with the best examples, by raw likes or by likes per 1,000 followers, over all history or the last 14 days |
-| `/insights` | The demand brief and the statistics behind it, with 8 saved versions |
-| `/review` | Every collected post with the category it was filed under, editable in place (admin only) |
+| `/insights`   | The demand brief and the statistics behind it, with 8 saved versions                                                                           |
+| `/review`     | Every collected post with the category it was filed under, editable in place (admin only)                                                      |
 
 ## Product behavior
 
@@ -90,10 +90,11 @@ being added.
 
 The post and category rankings answer "what work resonated", so a post that
 handed over nothing does not enter them however many likes it drew. A post
-qualifies only once it has been filed under one of the seven kinds of work; an
-untagged post is not *known* to be work, and admitting it on the chance that it
+qualifies only once it has been filed under one of the eight kinds of work; an
+untagged post is not _known_ to be work, and admitting it on the chance that it
 might be is what previously filled the ranking with takes, replies and conference
-photos. About a third of the corpus classifies as `not-work`.
+photos. Filing a post as **Deleted** does the same thing deliberately, and is a
+category rather than a removal: the post stays, and the decision is reversible.
 
 The one exception is a post added by hand, which is ranked immediately and keeps
 its place whatever the classifier later decides — choosing it is itself the
@@ -101,8 +102,8 @@ judgement that it belongs.
 
 ### The category set
 
-`PRODUCT_CATEGORIES` in `lib/mission.ts` is the third attempt and the first to
-survive being read against the corpus.
+`PRODUCT_CATEGORIES` in `lib/mission.ts` was arrived at by reading the corpus
+against each draft and correcting by hand.
 
 The first set could not be counted at all: `utility-tool`, `web-app`, `dev-tool`
 and `api-service` sat side by side with no boundary between them, there was no
@@ -119,55 +120,57 @@ questions than twelve precise ones that each measure noise.**
 
 The set, in precedence order:
 
-| Category | What it means |
-|---|---|
-| `education` | The post exists so somebody learns: a tutorial, breakdown, course, stream or talk, and equally an interactive explainer, learning app or study aid built so they learn without the builder present |
-| `client-work` | Made for a client, brand or employer, however it was built |
-| `game` | A game: rules and an objective, something that can be won or lost |
-| `utility-tool` | Exists to get something done: utility, editor, generator, dashboard, or a library that does that job for people who write code |
-| `own-product` | The author's own presence or property: portfolio, studio site, personal site, their own launch |
-| `interface-craft` | The artifact is a piece of interface — a reusable component, a design system, a transition, a hover or scroll behaviour. The still thing and its behaviour are the same kind of work |
-| `interactive-3d` | The artifact is a scene or visual, shown for what it looks like: 3D, shaders, simulations, generative and audiovisual pieces, and interactive toys |
-| `not-work` | Handed over nothing made. Stored as an empty tag list, not as a value |
+| Category         | What it means                                                                                                                                                                                            |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `client-work`    | Made for a client, brand or employer, however it was built                                                                                                                                               |
+| `education`      | The artifact itself teaches: an interactive explainer, a learning app, a course platform, a simulation built so a concept becomes clear                                                                  |
+| `game`           | A game: rules and an objective, something that can be won or lost                                                                                                                                        |
+| `own-site`       | Presents a person or a company: portfolio, studio site, personal site or blog, a log of their own work                                                                                                   |
+| `building-block` | A part you take away and use in your own work — a component library, a package, a plugin — and equally the small factory that produces one: a font editor, an icon or gradient generator, a mockup maker |
+| `web-app`        | A web app that gets something done: a workflow, a calculator, a converter, a dashboard, an app that saves time at work or in daily life                                                                  |
+| `interactive-3d` | A three-dimensional scene shown for how it looks: WebGL and Three.js scenes, raymarched worlds, 3D simulations and toys                                                                                  |
+| `visual-2d`      | A flat visual or flat toy: canvas, SVG and CSS visuals, generative art, flat shader patterns, 2D physics toys, plane data visuals                                                                        |
+| `not-work`       | Handed over nothing made. Shown as **Deleted**, and stored as an empty tag list rather than as a value                                                                                                   |
 
-Two properties make the set countable, and both matter more than the names:
+Three properties make the set countable, and all of them matter more than the
+names:
 
-- **Every value answers the same question:** what did this post hand over? Never
-  who it was for, how it was made, or how finished it is.
+- **Every value describes the artifact, never the post.** This is the rule the
+  earlier sets broke. A category that meant "the post is teaching" swept up
+  tutorials about work belonging in five different buckets, so a thread
+  explaining how a solar system was built is now `not-work` while an interactive
+  solar system built so you learn the planets is `education`. If a post explains
+  something _and_ links to it, the thing it links to is what gets categorised.
+- **The interactive split is by dimension, not by feel.** One bucket called "3D,
+  visuals & toys" held a raymarched world and a CSS gradient study, and no
+  definition kept those together honestly. "Is there a space with depth — a
+  camera, perspective, geometry?" is answered the same way by two different
+  readers, which is the only property a boundary actually needs. Neither the
+  library used nor how impressive it looks enters into it: a raymarched fragment
+  shader is 3D and a flat pattern from the same shader is 2D. Toys are not their
+  own category, because they were never one kind of thing.
 - **The set is ordered and the first match wins.** Overlap is unavoidable — a
   client site can be full of 3D, a portfolio can be a shader demo — so ambiguity
   is resolved by precedence rather than by the model's mood, which is what stops
   the same post landing in a different bucket every cycle. Work delivered for a
-  client is `client-work` whether or not it is 3D; a post explaining a technique
-  is `education` whatever the technique was; a portfolio is `own-product` however
-  it is rendered.
+  client is `client-work` whether or not it is 3D; a portfolio is `own-site`
+  however it is rendered, including when its source is published, because it is
+  still their portfolio.
 
-Two of the boundaries are worth stating outright, because they are the ones a
+Three of the boundaries are worth stating outright, because they are the ones a
 reader will test:
 
-- **A tool the author owns is a tool, not their product.** `utility-tool` beats
-  `own-product` deliberately: what a thing is matters more than who owns it, so an
-  indie utility files with the other utilities where it can be compared.
-  `own-product` is for a portfolio, a studio site, a personal site — the author's
-  own presence rather than something they made for you to use.
-- **A UI component and the way it moves are one category.** `interface-craft`
-  covers both, and beats `interactive-3d` whenever what is shown is part of an
-  interface, even if it is rendered with WebGL.
-- **A lesson and a learning product are one category.** `education` covers both
-  the builder explaining — a thread, a video, a talk, where the post is their
-  words — and a thing they built that does the explaining without them, where the
-  post is a link to it. Splitting them was tried and abandoned: the reason for
-  the work is identical, and the corpus produced one post of the second kind in
-  the first three hundred, which is a thin sample rather than a category. Because
-  `education` sits above `game` and everything below it, a game made to teach
-  files here too: what a thing is for says more than what it is made of.
+- **A part or an outcome.** `building-block` and `web-app` are told apart by what
+  you leave with: a piece that goes into something you are building, or a job
+  done. A gradient generator is a building block; a mortgage calculator is a web
+  app.
 - **A toy is not a game.** `game` requires an objective: levels, a score,
   something to win or lose, a puzzle to solve. A scene you can drag, spin or
-  disturb has none of that and files as `interactive-3d`, next to the shaders and
-  simulations it is actually made of. The earlier wording said "a game, a puzzle,
-  or a toy with no purpose beyond messing with it", which put two unlike things in
-  one bucket and made the smallest category on the site harder to read than any
-  other.
+  disturb has none of that and files by dimension, next to the shaders and
+  simulations it is actually made of.
+- **A tool the author owns is a tool.** `own-site` is for presenting whose it is,
+  not for anything they happen to own, so an indie utility files with the other
+  utilities where it can be compared.
 
 **A post may carry two tags, and almost never should.** The model is only ever
 asked for one; the second slot exists for the owner, who is the one person able to
@@ -249,7 +252,7 @@ Three deliberate choices, because the naive versions of all three are misleading
 
 - **Likes per 1,000 followers, not raw likes.** 500 likes means something very
   different for a 3,000-follower account than a 150,000-follower one. In the
-  seeded directory the most-followed builder is one of the *least* resonant per
+  seeded directory the most-followed builder is one of the _least_ resonant per
   follower — a 21× difference that raw counts hide completely.
 - **Breakout multiple.** A post divided by the median of its own author's posts.
   This removes both audience size and the author's general popularity, leaving
@@ -264,7 +267,7 @@ flagged as thin and sorted below the reliable rows instead of being ranked as if
 it were solid.
 
 The sample is design engineers and creative developers, so it measures what a
-*technical* audience rewards. The page says so, and the model is instructed to
+_technical_ audience rewards. The page says so, and the model is instructed to
 name that limitation rather than write around it.
 
 ## Architecture
@@ -294,19 +297,19 @@ produced.
 
 Never put real secret values in GitHub. Copy `.env.example` to `.env.local` for local development, and add the same names in Vercel under **Project → Settings → Environment Variables**.
 
-| Variable | Purpose |
-|---|---|
-| `X_BEARER_TOKEN` | Reads public X data |
-| `DATABASE_URL` | Connects to PostgreSQL |
-| `CRON_SECRET` | Protects the scheduled update URLs |
-| `ADMIN_USERNAME` | Username for `/admin` |
-| `ADMIN_PASSWORD` | Password for `/admin` |
-| `OPENAI_API_KEY` | Builder summaries, post tagging, demand brief |
-| `OPENAI_BASE_URL` | Optional; point at any OpenAI-compatible provider |
-| `OPENAI_MODEL` | Analysis model; defaults to `gpt-5-mini` |
-| `SITE_USERNAME` | Username for viewing the site while it is confidential |
-| `SITE_PASSWORD` | Password for viewing the site; share this one |
-| `SITE_URL` | Optional canonical URL for social share images |
+| Variable          | Purpose                                                |
+| ----------------- | ------------------------------------------------------ |
+| `X_BEARER_TOKEN`  | Reads public X data                                    |
+| `DATABASE_URL`    | Connects to PostgreSQL                                 |
+| `CRON_SECRET`     | Protects the scheduled update URLs                     |
+| `ADMIN_USERNAME`  | Username for `/admin`                                  |
+| `ADMIN_PASSWORD`  | Password for `/admin`                                  |
+| `OPENAI_API_KEY`  | Builder summaries, post tagging, demand brief          |
+| `OPENAI_BASE_URL` | Optional; point at any OpenAI-compatible provider      |
+| `OPENAI_MODEL`    | Analysis model; defaults to `gpt-5-mini`               |
+| `SITE_USERNAME`   | Username for viewing the site while it is confidential |
+| `SITE_PASSWORD`   | Password for viewing the site; share this one          |
+| `SITE_URL`        | Optional canonical URL for social share images         |
 
 ### Using a non-OpenAI provider
 
@@ -321,7 +324,7 @@ OPENAI_MODEL=deepseek-v4-flash
 
 DeepSeek's Responses API accepts the strict `json_schema` format this code sends,
 including the nested array-of-objects schema used for post tagging. Note that its
-*chat completions* endpoint rejects `json_schema`, so don't rewrite the calls to
+_chat completions_ endpoint rejects `json_schema`, so don't rewrite the calls to
 use that endpoint.
 
 Every model reply is validated before it reaches the database: scores are clamped
@@ -478,9 +481,9 @@ Do not put the real secret in a public screenshot or message.
 The whole site sits behind HTTP basic auth while the idea is confidential. There
 are two tiers:
 
-| Credentials | Opens |
-|---|---|
-| `SITE_USERNAME` / `SITE_PASSWORD` | every public page, read-only |
+| Credentials                         | Opens                              |
+| ----------------------------------- | ---------------------------------- |
+| `SITE_USERNAME` / `SITE_PASSWORD`   | every public page, read-only       |
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD` | every public page **and** `/admin` |
 
 Hand out the site pair. Admin credentials also open the public pages, so one
@@ -574,11 +577,11 @@ $200/month Basic plan was retired and its subscribers were migrated to pay-per-u
 new developers cannot buy a flat tier. **Reads bill per resource returned, not per
 request** — this single fact drives every design decision below.
 
-| Resource | Unit cost |
-|---|---|
-| Post read | $0.005 |
-| User read | $0.010 |
-| Following/followers read | $0.010 |
+| Resource                 | Unit cost |
+| ------------------------ | --------- |
+| Post read                | $0.005    |
+| User read                | $0.010    |
+| Following/followers read | $0.010    |
 
 ### The six-hour cycle: roughly $40/month at sixty builders
 
@@ -607,7 +610,7 @@ The naive fix — re-read anything not yet two days old, every cycle — costs e
 paid reads per post to arrive at the same answer as one well-timed read. Measured
 on this corpus it made 71 posts eligible on every single run. `SETTLE_HOURS` in
 `lib/sync.ts` instead reads each post once, shortly after it crosses the maturity
-bar, plus a weekly sweep for longer-term drift. That is cheaper *and* produces a
+bar, plus a weekly sweep for longer-term drift. That is cheaper _and_ produces a
 better number: posts previously landed anywhere between 24 and 48 hours of age,
 where now they sit in a narrow band and are genuinely comparable.
 
